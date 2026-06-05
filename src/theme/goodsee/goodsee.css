@@ -1,0 +1,468 @@
+:root {
+  --primary-color: #e85d3a;
+
+  /* 中性色 — 暖灰 */
+  --mid-1: #ffffff;
+  --mid-2: #fafaf8;
+  --mid-3: #f5f5f2;
+  --mid-4: #efefec;
+  --mid-5: #d9d9d4;
+  --mid-6: #bfbfba;
+  --mid-7: #8c8c88;
+  --mid-8: #595956;
+  --mid-9: #434340;
+  --mid-10: #262624;
+  --mid-11: #1f1f1d;
+  --mid-12: #141413;
+  --mid-13: #000000;
+
+  /* 主题色 — 红橙色系 */
+  --main-1: #fef2ed;
+  --main-2: #fde0d4;
+  --main-3: #fbc4ae;
+  --main-4: #f7a283;
+  --main-5: #e85d3a;
+  --main-6: #d94f2a;
+  --main-7: #c0401f;
+  --main-8: #a33216;
+  --main-9: #85250e;
+  --main-10: #5e1807;
+
+  /* 字体 — 使用系统字体，无外部依赖 */
+  --font-normal: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --font-code: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', 'Monaco', monospace;
+}
+
+html {
+  font-size: 15px;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-normal) !important;
+  line-height: 1.75;
+  color: var(--mid-10);
+  background-color: var(--mid-1);
+  -webkit-font-smoothing: antialiased;
+}
+
+#write {
+  max-width: 860px;
+  padding: 40px 30px 160px;
+  margin: 0 auto;
+}
+
+/* ── 段落 ── */
+#write p {
+  line-height: 1.8;
+  word-spacing: 0.04em;
+}
+
+/* ── 链接 ── */
+#write a {
+  color: var(--main-6);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+#write a:hover {
+  color: var(--main-7);
+  border-bottom-color: var(--main-5);
+}
+
+/* ── 标题 ── */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  position: relative;
+  margin-top: 1.2rem;
+  margin-bottom: 0.8rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--mid-10);
+}
+
+/* 一级标题：居中 + 下方红色虚线 */
+h1 {
+  display: table;
+  padding-bottom: 0.3em;
+  margin: 2.4em auto 1.2em;
+  font-size: 2em;
+  font-weight: 700;
+  text-align: center;
+}
+
+h1::after {
+  display: block;
+  width: 100%;
+  height: 1px;
+  margin-top: 0.2em;
+  content: '';
+  border-bottom: 2px dashed var(--main-5);
+}
+
+/* 二级标题：左边界 */
+h2 {
+  padding-left: 6px;
+  margin: 2em auto 1.2em;
+  font-size: 1.55em;
+  border-left: 4px solid var(--main-5);
+}
+
+/* 三级标题：左边红色竖线 */
+h3 {
+  margin: 1.6em auto 1em;
+  font-size: 1.3em;
+}
+
+h3::before {
+  display: inline-block;
+  width: 3px;
+  height: 1em;
+  margin-right: 8px;
+  vertical-align: middle;
+  content: '';
+  background-color: var(--main-5);
+}
+
+/* 四级标题：左边浅色竖线 */
+h4 {
+  margin-top: 1.4em;
+  font-size: 1.15em;
+}
+
+h4::before {
+  display: inline-block;
+  width: 3px;
+  height: 1em;
+  margin-right: 8px;
+  vertical-align: middle;
+  content: '';
+  background-color: var(--main-4);
+}
+
+h5 {
+  font-size: 1em;
+  color: var(--mid-8);
+}
+
+h6 {
+  font-size: 0.92em;
+  color: var(--mid-7);
+}
+
+/* ── 分割线 ── */
+hr {
+  width: 60%;
+  height: 1px;
+  padding: 0;
+  margin: 40px auto;
+  background-color: var(--main-3);
+  border: none;
+}
+
+/* ── 引用块 ── */
+blockquote {
+  position: relative;
+  padding: 16px 20px;
+  margin: 24px 0;
+  font-size: 0.95em;
+  line-height: 1.7;
+  color: var(--mid-8);
+  background-color: var(--mid-2);
+  border-left: 3px solid var(--main-4);
+  border-radius: 0 4px 4px 0;
+}
+
+blockquote blockquote {
+  padding-right: 0;
+  background-color: transparent;
+}
+
+blockquote a {
+  color: var(--mid-8);
+}
+
+/* ── 列表 ── */
+ul,
+ol {
+  padding-left: 24px;
+  line-height: 1.8;
+}
+
+li > ul,
+li > ol {
+  margin: 0;
+}
+
+/* ── 表格 ── */
+table {
+  width: auto;
+  padding: 0;
+  margin: 28px auto;
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+
+table tr {
+  border-top: 1px solid var(--mid-5);
+  transition: background-color 0.15s;
+}
+
+table tr:nth-child(2n) {
+  background-color: var(--mid-2);
+}
+
+table tr th {
+  padding: 8px 14px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--mid-9);
+  background-color: #cffafe;
+  border: 1px solid #a5f3fc;
+}
+
+table tr td {
+  padding: 8px 14px;
+  text-align: center;
+  border: 1px solid var(--mid-5);
+}
+
+/* ── 行内代码 ── */
+#write code,
+tt {
+  padding: 2px 6px;
+  margin: 0 2px;
+  font-family: var(--font-code) !important;
+  font-size: 0.88em;
+  color: var(--main-6);
+  background-color: var(--main-1);
+  border-radius: 3px;
+}
+
+/* ── 代码块 ── */
+#write .md-fences {
+  margin: 1.6rem 0 2rem !important;
+  font-family: var(--font-code) !important;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--mid-10);
+  background-color: #f8f8f6;
+  border: 1px solid var(--mid-4);
+  border-radius: 6px;
+  -webkit-font-smoothing: initial;
+}
+
+#write .CodeMirror-wrap .CodeMirror-code pre {
+  padding-left: 12px;
+}
+
+/* ── 代码块语法高亮（浅色主题，适配红橙主色）── */
+.cm-s-inner.CodeMirror {
+  color: #383a42;
+  background-color: #f8f8f6;
+  border-radius: 4px;
+}
+
+.cm-s-inner .CodeMirror-gutters {
+  color: var(--mid-6);
+  background: #f8f8f6;
+  border: none;
+}
+
+.cm-s-inner .CodeMirror-guttermarker,
+.cm-s-inner .CodeMirror-guttermarker-subtle,
+.cm-s-inner .CodeMirror-linenumber {
+  color: var(--mid-6);
+}
+
+.cm-s-inner .CodeMirror-cursor {
+  border-left: 1.5px solid var(--main-5);
+}
+
+.cm-s-inner div.CodeMirror-selected {
+  background: rgba(232, 93, 58, 0.12);
+}
+
+.cm-s-inner.CodeMirror-focused div.CodeMirror-selected {
+  background: rgba(232, 93, 58, 0.15);
+}
+
+.cm-s-inner .cm-keyword {
+  color: #a626a4;
+}
+
+.cm-s-inner .cm-operator {
+  color: #4078f2;
+}
+
+.cm-s-inner .cm-variable-2 {
+  color: #383a42;
+}
+
+.cm-s-inner .cm-variable-3,
+.cm-s-inner .cm-type {
+  color: #986801;
+}
+
+.cm-s-inner .cm-builtin {
+  color: #c18401;
+}
+
+.cm-s-inner .cm-atom {
+  color: #986801;
+}
+
+.cm-s-inner .cm-number {
+  color: #d75f00;
+}
+
+.cm-s-inner .cm-def {
+  color: #4078f2;
+}
+
+.cm-s-inner .cm-string {
+  color: #50a14f;
+}
+
+.cm-s-inner .cm-string-2 {
+  color: #50a14f;
+}
+
+.cm-s-inner .cm-comment {
+  color: #a0a1a7;
+  font-style: italic;
+}
+
+.cm-s-inner .cm-variable {
+  color: #e45649;
+}
+
+.cm-s-inner .cm-tag {
+  color: #e45649;
+}
+
+.cm-s-inner .cm-meta {
+  color: #c18401;
+}
+
+.cm-s-inner .cm-attribute {
+  color: #986801;
+}
+
+.cm-s-inner .cm-property {
+  color: #0184bc;
+}
+
+.cm-s-inner .cm-qualifier {
+  color: #c18401;
+}
+
+.cm-s-inner .cm-error {
+  color: #ffffff;
+  background-color: #e45649;
+}
+
+.cm-s-inner .CodeMirror-matchingbracket {
+  color: #383a42 !important;
+  text-decoration: underline;
+}
+
+/* ── 粗体 / 斜体 ── */
+#write strong {
+  font-weight: 600;
+  color: var(--mid-9);
+}
+
+#write em {
+  color: var(--mid-8);
+}
+
+/* ── 删除线 ── */
+#write del {
+  color: var(--mid-6);
+}
+
+/* ── 高亮 ── */
+#write mark {
+  padding: 2px 4px;
+  margin: 0 2px;
+  color: var(--mid-10);
+  background-color: #fde0d4;
+  border-radius: 3px;
+}
+
+/* ── 图片 ── */
+.md-image {
+  margin: 24px auto;
+  border-radius: 6px;
+}
+
+.md-image img {
+  max-width: 100%;
+  border-radius: 6px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+/* ── 任务列表 ── */
+.md-task-list-item > input {
+  margin-top: calc(1em - 8px);
+  margin-left: -1.5em;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.md-task-list-item > input::before {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  font-size: 0.7rem;
+  color: var(--mid-1);
+  text-align: center;
+  vertical-align: middle;
+  content: '';
+  border: 1.5px solid var(--main-4);
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+.md-task-list-item > input:checked::before {
+  content: '\2713';
+  background-color: var(--main-5);
+  border-color: var(--main-5);
+}
+
+/* ── 脚注 ── */
+#write .md-footnote {
+  color: var(--main-5);
+  background-color: var(--main-1);
+  border-radius: 3px;
+}
+
+/* ── 目录 ── */
+#write a.md-toc-inner {
+  line-height: 1.6;
+  white-space: pre-line;
+  border-bottom: none;
+}
+
+.md-toc {
+  padding-bottom: 20px;
+  margin-top: 20px;
+}
+
+/* ── 打印 ── */
+@media print {
+  html {
+    font-size: 13px;
+  }
+
+  table,
+  pre {
+    page-break-inside: avoid;
+  }
+}

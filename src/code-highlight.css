@@ -1,0 +1,121 @@
+/* ─── Syntax highlighting for code blocks ───
+ * lowlight applies hljs-* classes (keyword, string, etc.)
+ * via ProseMirror decorations — this CSS makes them visible.
+ *
+ * Colors are modeled after the Atom One themes.
+ * Each app chrome theme maps to a light or dark variant.
+ */
+
+/* ─── Token colors ─── */
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--hljs-comment);
+  font-style: italic;
+}
+
+.hljs-doctag,
+.hljs-keyword,
+.hljs-formula {
+  color: var(--hljs-keyword);
+}
+
+.hljs-section,
+.hljs-name,
+.hljs-selector-tag,
+.hljs-deletion,
+.hljs-subst {
+  color: var(--hljs-deletion);
+}
+
+.hljs-literal {
+  color: var(--hljs-literal);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-attribute,
+.hljs-meta .hljs-string {
+  color: var(--hljs-string);
+}
+
+.hljs-attr,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-type,
+.hljs-selector-class,
+.hljs-selector-attr,
+.hljs-selector-pseudo,
+.hljs-number {
+  color: var(--hljs-number);
+}
+
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link,
+.hljs-meta,
+.hljs-selector-id,
+.hljs-title {
+  color: var(--hljs-symbol);
+}
+
+.hljs-built_in,
+.hljs-title.class_,
+.hljs-class .hljs-title {
+  color: var(--hljs-built-in);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: bold;
+}
+.hljs-link {
+  text-decoration: underline;
+}
+
+/* Avoid interfering with ProseMirror's own <code> styling */
+.hljs {
+  color: var(--text-primary);
+}
+
+/* ─── syntax_hint disabled: override all hljs classes to plain text ─── */
+
+.wysiwyg-content[data-syntax-hint="false"] [class^="hljs-"],
+.wysiwyg-content[data-syntax-hint="false"] [class*=" hljs-"] {
+  color: inherit !important;
+  background: transparent !important;
+  font-style: inherit !important;
+  font-weight: inherit !important;
+  text-decoration: inherit !important;
+}
+
+/* ─── Theme: light (Atom One Light) ─── */
+
+[data-theme="light"],
+[data-theme="minimal"] {
+  --hljs-comment: #a0a1a7;
+  --hljs-keyword: #a626a4;
+  --hljs-deletion: #e45649;
+  --hljs-literal: #0184bb;
+  --hljs-string: #50a14f;
+  --hljs-number: #986801;
+  --hljs-symbol: #4078f2;
+  --hljs-built-in: #c18401;
+}
+
+/* ─── Theme: dark (Atom One Dark) ─── */
+
+[data-theme="dark"],
+[data-theme="eye-care"] {
+  --hljs-comment: #5c6370;
+  --hljs-keyword: #c678dd;
+  --hljs-deletion: #e06c75;
+  --hljs-literal: #56b6c2;
+  --hljs-string: #98c379;
+  --hljs-number: #d19a66;
+  --hljs-symbol: #61aeee;
+  --hljs-built-in: #e6c07b;
+}
