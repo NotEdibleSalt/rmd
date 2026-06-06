@@ -31,21 +31,24 @@ export function adaptCssFile(css: string): string {
 
   result = result
     // #write::before / #write::after → .ProseMirror::before/after
-    .replace(/#write::before/g, '.ProseMirror::before')
-    .replace(/#write::after/g, '.ProseMirror::after')
-    // #write > h3.md-focus → .ProseMirror > h3
-    .replace(/#write\s*>\s*/g, '.ProseMirror > ')
-    // #write .md-fences → .ProseMirror pre
+    .replace(/#write::before/g, '.wysiwyg-editor .ProseMirror::before')
+    .replace(/#write::after/g, '.wysiwyg-editor .ProseMirror::after')
+    // #write > h3.md-focus → .wysiwyg-editor .ProseMirror > h3
+    .replace(/#write\s*>\s*/g, '.wysiwyg-editor .ProseMirror > ')
+    // #write .md-fences → .wysiwyg-editor .ProseMirror pre
+    // MUST come before the general .md-fences replacement to avoid double .ProseMirror
+    .replace(/#write\s+\.md-fences/g, '.wysiwyg-editor .ProseMirror pre')
+    // Standalone .md-fences (no #write prefix) → .ProseMirror pre
     .replace(/\.md-fences/g, '.ProseMirror pre')
     // #write .CodeMirror-* → keep but scope
-    .replace(/#write\s+\.CodeMirror/g, '.ProseMirror .CodeMirror')
-    // #write at start of selector → .ProseMirror
-    .replace(/#write\s+/g, '.ProseMirror ')
-    .replace(/#write\s*\{/g, '.ProseMirror {')
-    .replace(/#write\s*\./g, '.ProseMirror .')
+    .replace(/#write\s+\.CodeMirror/g, '.wysiwyg-editor .ProseMirror .CodeMirror')
+    // #write at start of selector → .wysiwyg-editor .ProseMirror
+    .replace(/#write\s+/g, '.wysiwyg-editor .ProseMirror ')
+    .replace(/#write\s*\{/g, '.wysiwyg-editor .ProseMirror {')
+    .replace(/#write\s*\./g, '.wysiwyg-editor .ProseMirror .')
     // body / html as content base
-    .replace(/^html\s*\{/gm, '.ProseMirror {')
-    .replace(/^body\s*\{/gm, '.ProseMirror {');
+    .replace(/^html\s*\{/gm, '.wysiwyg-editor .ProseMirror {')
+    .replace(/^body\s*\{/gm, '.wysiwyg-editor .ProseMirror {');
     // .md-image → keep (used for images)
     // .md-task-list-item → keep
     // .md-toc → keep
