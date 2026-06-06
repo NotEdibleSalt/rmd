@@ -1609,6 +1609,125 @@ body {
   animation: highlight-fade 2s ease-out;
 }
 
+/* ===== Image Resize ===== */
+.image-resize-wrapper {
+  display: inline-block !important;
+  position: relative !important;
+  line-height: 0;
+  vertical-align: bottom;
+}
+
+.image-resize-wrapper img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.image-resize-wrapper[data-resizing="true"] {
+  user-select: none;
+}
+
+.image-resize-handle {
+  position: absolute;
+  display: block;
+}
+
+.image-resize-handle-right {
+  top: 0;
+  bottom: 0;
+  right: -5px;
+  width: 10px;
+  cursor: col-resize;
+  z-index: 1;
+  transition: background 0.15s;
+}
+
+.image-resize-handle-right:hover {
+  background: var(--accent);
+  border-radius: 4px;
+  opacity: 0.25;
+}
+
+.image-resize-handle-corner {
+  bottom: -7px;
+  right: -7px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  background: var(--bg-primary);
+  border: 2px solid var(--accent);
+  border-radius: 3px;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.15s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.image-resize-wrapper:hover .image-resize-handle-corner,
+.image-resize-wrapper[data-resizing="true"] .image-resize-handle-corner {
+  opacity: 1;
+}
+
+/* ===== Image Alt Text Bar ===== */
+.image-alt-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.image-alt-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  pointer-events: auto;
+  white-space: nowrap;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: all 0.12s;
+  box-shadow: var(--shadow);
+}
+
+.image-alt-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-light);
+}
+
+.image-alt-input {
+  display: block;
+  width: 240px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 11px;
+  outline: none;
+  pointer-events: auto;
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+.image-alt-input::placeholder {
+  color: var(--text-muted);
+}
+
 /* ===== WYSIWYG Editor ===== */
 .wysiwyg-editor {
   display: flex;

@@ -46,6 +46,7 @@ export function SourceEditor() {
       const fontCompartment = new Compartment();
       const lineNumbersCompartment = new Compartment();
       const wrapCompartment = new Compartment();
+      const spellcheckCompartment = new Compartment();
 
       // Light theme using CSS variables from App.css
       const lightTheme = EditorView.theme({
@@ -101,6 +102,7 @@ export function SourceEditor() {
           ),
           lineNumbersCompartment.of(config.line_numbers ? lineNumbers() : []),
           wrapCompartment.of(config.word_wrap ? EditorView.lineWrapping : []),
+          spellcheckCompartment.of(EditorView.contentAttributes.of({ spellcheck: config.spell_check ? "true" : "false" })),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               const md = update.state.doc.toString();
@@ -120,6 +122,7 @@ export function SourceEditor() {
           fontCompartment,
           lineNumbersCompartment,
           wrapCompartment,
+          spellcheckCompartment,
         },
       };
     }
@@ -161,6 +164,7 @@ export function SourceEditor() {
       fontCompartment,
       lineNumbersCompartment,
       wrapCompartment,
+      spellcheckCompartment,
     } = compartments;
     const { EditorView, oneDark, lineNumbers } = mods;
 
@@ -190,6 +194,9 @@ export function SourceEditor() {
         ),
         lineNumbersCompartment.reconfigure(config.line_numbers ? lineNumbers() : []),
         wrapCompartment.reconfigure(config.word_wrap ? EditorView.lineWrapping : []),
+        spellcheckCompartment.reconfigure(
+          EditorView.contentAttributes.of({ spellcheck: config.spell_check ? "true" : "false" })
+        ),
       ],
     });
   }, [
@@ -197,6 +204,7 @@ export function SourceEditor() {
     config.word_wrap,
     config.font_family,
     config.editor_font_size,
+    config.spell_check,
     theme,
   ]);
 

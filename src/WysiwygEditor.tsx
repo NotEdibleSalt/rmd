@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useEditor, EditorContent, mergeAttributes, type Editor } from '@tiptap/react';
+import { useEditor, EditorContent, mergeAttributes, ReactNodeViewRenderer, type Editor } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from '@tiptap/markdown';
@@ -31,6 +31,7 @@ import { HeadingAfterHardBreak } from './extensions/HeadingAfterHardBreak';
 import { BlockquoteAfterHardBreak } from './extensions/BlockquoteAfterHardBreak';
 import { HorizontalRuleAfterHardBreak } from './extensions/HorizontalRuleAfterHardBreak';
 import { WikiLinkAutocomplete } from './extensions/WikiLinkAutocomplete';
+import { ImageResizeView } from './extensions/ImageResizeView';
 import { convertFileSrc } from '@tauri-apps/api/core';
 
 const lowlight = createLowlight(common);
@@ -47,6 +48,7 @@ const LocalImage = Image.extend({
       alt: { default: null },
       title: { default: null },
       'data-markdown-src': { default: null },
+      width: { default: null },
     };
   },
   renderHTML({ HTMLAttributes }) {
@@ -64,10 +66,14 @@ const LocalImage = Image.extend({
           return {
             src: img.getAttribute('src'),
             'data-markdown-src': img.getAttribute('data-markdown-src'),
+            width: img.getAttribute('width'),
           };
         },
       },
     ];
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(ImageResizeView);
   },
 });
 
@@ -148,11 +154,18 @@ export function WysiwygEditor() {
           nodes: {
             image: (state: any, node: any) => {
               const src = node.attrs['data-markdown-src'] || node.attrs.src;
-              state.write('![');
-              state.write(node.attrs.alt || '');
-              state.write('](');
-              state.write(src);
-              state.write(')');
+              const alt = node.attrs.alt || '';
+              const width = node.attrs.width;
+              if (width) {
+                // Use inline HTML when width is set (standard markdown doesn't have width syntax)
+                state.write(`<img src="${src}" alt="${alt}" width="${width}">`);
+              } else {
+                state.write('![');
+                state.write(alt);
+                state.write('](');
+                state.write(src);
+                state.write(')');
+              }
             },
             mermaid: (state: any, node: any) => {
               state.write('```mermaid\n');
@@ -508,6 +521,12 @@ export function WysiwygEditor() {
     if (!editor) return;
     editor.view.dom.setAttribute('data-syntax-hint', String(config.syntax_hint));
   }, [config.syntax_hint, editor]);
+
+  // spell_check: toggle native browser spellcheck (backed by OS spellchecker)
+  useEffect(() => {
+    if (!editor) return;
+    editor.view.dom.setAttribute('spellcheck', String(config.spell_check));
+  }, [config.spell_check, editor]);
 
   if (!editor) return null;
 
