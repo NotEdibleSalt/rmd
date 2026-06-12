@@ -99,7 +99,7 @@ export function MermaidNodeView({ node, updateAttributes, selected }: NodeViewPr
     import('mermaid').then((mod) => {
       if (!cancelled) {
         mermaidRef.current = mod;
-        mod.default.initialize({ startOnLoad: false, ...getMermaidTheme() });
+        mod.default.initialize({ startOnLoad: false, htmlLabels: false, ...getMermaidTheme() });
         renderDiagram(code);
       }
     });
@@ -112,7 +112,7 @@ export function MermaidNodeView({ node, updateAttributes, selected }: NodeViewPr
     const html = document.documentElement;
     const observer = new MutationObserver(() => {
       if (mermaidRef.current) {
-        mermaidRef.current.default.initialize({ startOnLoad: false, ...getMermaidTheme() });
+        mermaidRef.current.default.initialize({ startOnLoad: false, htmlLabels: false, ...getMermaidTheme() });
         renderDiagram(codeRef.current);
       }
     });

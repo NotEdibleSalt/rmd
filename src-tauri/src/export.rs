@@ -51,7 +51,7 @@ fn try_embed_file(raw_path: &str, base_path: &str) -> Option<String> {
 
 /// Strip ./ prefix and .md/.markdown extension from a wikilink target
 /// so [[./bb.md]] resolves to the same file as [[bb]].
-fn normalize_wikilink_target(raw: &str) -> String {
+pub(crate) fn normalize_wikilink_target(raw: &str) -> String {
     let trimmed = raw.trim().trim_start_matches(|c| c == '.' || c == '/' || c == '\\');
     if let Some(stripped) = trimmed
         .strip_suffix(".md")
@@ -1442,55 +1442,8 @@ fn text_width(s: &str) -> f64 {
     s.chars().map(char_width).sum()
 }
 
-pub fn export_to_docx(source: &str, output_path: &str, base_path: &str, markdown_theme_css: &str) -> Result<(), String> {
-    use std::io::Write;
-
-    // Simple HTML-to-DOCX conversion using HTML format that Word can open
-    let source = embed_markdown_images(source, base_path);
-    let parsed = markdown::parse(&source);
-    let content = embed_html_images(&parsed.html, base_path);
-
-    let use_theme_css = !markdown_theme_css.is_empty();
-    let style_tag = if use_theme_css {
-        format!(
-            "<style>{}</style>",
-            markdown_theme_css
-        )
-    } else {
-        String::new()
-    };
-
-    let body_attrs = if use_theme_css { "" } else {
-        r#" style="font-family: 'Times New Roman', serif; line-height: 1.7; max-width: 800px; margin: 0 auto; padding: 40px;""#
-    };
-
-    let content_wrapper = if use_theme_css {
-        // The markdown theme CSS targets `.ProseMirror` selectors
-        format!(r#"<div class="ProseMirror">{}</div>"#, content)
-    } else {
-        format!(r#"<div{}>{}</div>"#, body_attrs, content)
-    };
-
-    let html_content = format!(
-        r#"<html xmlns:o='urn:schemas-microsoft-com:office:office'
-              xmlns:w='urn:schemas-microsoft-com:office:word'
-              xmlns='http://www.w3.org/TR/REC-html40'>
-        <head><meta charset="UTF-8"><title>RMD Document</title>{}</head>
-        <body>
-        {}
-        </body></html>"#,
-        style_tag,
-        content_wrapper
-    );
-
-    // Save as .doc (HTML-based format that Word understands)
-    let path = Path::new(output_path);
-    let mut file = std::fs::File::create(path).map_err(|e| e.to_string())?;
-    file.write_all(html_content.as_bytes())
-        .map_err(|e| e.to_string())?;
-
-    // If .docx extension, we note it's actually Word-compatible HTML
-    // A full implementation would use a proper DOCX library
-
+pub fn export_to_docx(source: &str, output_path: &str, base_path: &str) -> Result<(), String> {
+    let bytes = crate::docx::generate(source, base_path)?;
+    std::fs::write(output_path, bytes).map_err(|e| e.to_string())?;
     Ok(())
 }

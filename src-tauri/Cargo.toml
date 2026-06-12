@@ -37,4 +37,10 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 dirs-next = "2"
 zip = "2"
+quick-xml = "0.37"
+resvg = "0.43"
+usvg = "0.43"
+
+[dev-dependencies]
+zip = "2"
 

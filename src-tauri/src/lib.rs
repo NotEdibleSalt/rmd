@@ -1,6 +1,7 @@
 mod commands;
 mod config;
 mod export;
+mod docx;
 mod filesystem;
 mod markdown;
 
@@ -64,3 +65,6 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod inspect;
