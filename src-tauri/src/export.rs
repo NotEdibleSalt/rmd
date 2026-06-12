@@ -1442,8 +1442,8 @@ fn text_width(s: &str) -> f64 {
     s.chars().map(char_width).sum()
 }
 
-pub fn export_to_docx(source: &str, output_path: &str, base_path: &str) -> Result<(), String> {
-    let bytes = crate::docx::generate(source, base_path)?;
+pub fn export_to_docx(source: &str, output_path: &str, base_path: &str, theme_options: &str) -> Result<(), String> {
+    let bytes = crate::docx::generate(source, base_path, theme_options)?;
     std::fs::write(output_path, bytes).map_err(|e| e.to_string())?;
     Ok(())
 }

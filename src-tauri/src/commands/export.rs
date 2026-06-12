@@ -11,6 +11,6 @@ pub fn export_pdf(source: &str, output_path: &str, base_path: &str, theme: &str,
 }
 
 #[tauri::command]
-pub fn export_docx(source: &str, output_path: &str, base_path: &str) -> Result<(), String> {
-    export::export_to_docx(source, output_path, base_path)
+pub fn export_docx(source: &str, output_path: &str, base_path: &str, theme_options: Option<&str>) -> Result<(), String> {
+    export::export_to_docx(source, output_path, base_path, theme_options.unwrap_or(""))
 }

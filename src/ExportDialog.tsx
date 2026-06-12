@@ -302,6 +302,58 @@ export function ExportDialog() {
       const styleTag = document.getElementById('rmd-markdown-theme');
       const markdownThemeCss = styleTag?.textContent || '';
 
+      // Extract resolved font/color values from the markdown theme for DOCX
+      const docxThemeOpts = (() => {
+        if (selectedFormat !== 'docx') return undefined;
+        const root = getComputedStyle(document.documentElement);
+        const v = (name: string, fallback: string) =>
+          root.getPropertyValue(name).trim() || fallback;
+
+        /** Convert rgb(r,g,b) → hex string (e.g. "B0B0AC"), or passthrough */
+        const normalizeColor = (raw: string): string => {
+          const m = raw.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
+          if (!m) return raw.startsWith('#') ? raw.replace(/^#/, '') : raw;
+          const [r, g, b] = [m[1], m[2], m[3]].map(v =>
+            parseInt(v).toString(16).padStart(2, '0'),
+          );
+          return `${r}${g}${b}`.toUpperCase();
+        };
+
+        const fontNormal = v('--font-normal', 'system-ui, sans-serif');
+        const fontCode   = v('--font-code',  'Consolas, monospace');
+        // Pick the first concrete font name from the CSS font-family stack
+        const firstFont = (stack: string) => {
+          const generic = new Set([
+            'serif','sans-serif','monospace','cursive','fantasy',
+            'system-ui','ui-serif','ui-sans-serif','ui-monospace','ui-rounded',
+          ]);
+          const parts = stack.split(',');
+          for (const p of parts) {
+            const cleaned = p.replace(/['"]/g, '').trim();
+            if (!generic.has(cleaned.toLowerCase()) && !cleaned.startsWith('-')) return cleaned;
+          }
+          // Fallback: strip quotes, return first non-generic
+          for (const p of parts) {
+            const cleaned = p.replace(/['"]/g, '').trim();
+            if (!generic.has(cleaned.toLowerCase())) return cleaned;
+          }
+          return 'Calibri';
+        };
+        const bodyColor = normalizeColor(v('--mid-10', '#262624'));
+        const codeBg    = normalizeColor(v('--main-1', '#fef2ed'));
+        // Code block text color: same as body in goodsee, but keep separate so themes can differ
+        const codeColor = normalizeColor(v('--mid-10', '#262624'));
+
+        return JSON.stringify({
+          bodyFont: firstFont(fontNormal),
+          headingFont: firstFont(fontNormal),
+          codeFont: firstFont(fontCode),
+          bodyColor,
+          codeBg,
+          codeColor,
+        });
+      })();
+
       switch (selectedFormat) {
         case 'html': {
           const html = await invoke('export_html', {
@@ -328,6 +380,7 @@ export function ExportDialog() {
             source: embeddedSource,
             outputPath: path,
             basePath,
+            themeOptions: docxThemeOpts,
           });
           break;
       }

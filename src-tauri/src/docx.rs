@@ -3,7 +3,25 @@ use comrak::{parse_document, Arena, ComrakOptions};
 use crate::export::normalize_wikilink_target;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
 use quick_xml::Writer;
+use serde::Deserialize;
 use std::io::Write;
+
+/// Theme options from the frontend — resolved font/color values extracted from the markdown theme CSS.
+#[derive(Debug, Default, Deserialize)]
+struct DocxTheme {
+    #[serde(default)]
+    body_font: String,
+    #[serde(default)]
+    heading_font: String,
+    #[serde(default)]
+    code_font: String,
+    #[serde(default)]
+    body_color: String,
+    #[serde(default)]
+    code_bg: String,
+    #[serde(default)]
+    code_color: String,
+}
 
 struct RelEntry {
     id: String,
@@ -22,16 +40,23 @@ struct DocxWriter {
     images: Vec<(String, Vec<u8>)>,
     rel_id_counter: u32,
     footnote_defs: Vec<(u64, Vec<u8>)>, // (id, rendered content bytes)
+    heading_counters: [u32; 6], // heading numbering per level (index 0 = H1, 5 = H6)
+    theme: DocxTheme,
 }
 
-pub fn generate(source: &str, base_path: &str) -> Result<Vec<u8>, String> {
-    let mut writer = DocxWriter::new();
+pub fn generate(source: &str, base_path: &str, theme_options: &str) -> Result<Vec<u8>, String> {
+    let theme: DocxTheme = if theme_options.is_empty() {
+        DocxTheme::default()
+    } else {
+        serde_json::from_str(theme_options).unwrap_or_default()
+    };
+    let mut writer = DocxWriter::new(theme);
     writer.parse_and_write(source, base_path)?;
     writer.finalize_zip()
 }
 
 impl DocxWriter {
-    fn new() -> Self {
+    fn new(theme: DocxTheme) -> Self {
         Self {
             document: Writer::new_with_indent(Vec::new(), b' ', 2),
             styles: Writer::new_with_indent(Vec::new(), b' ', 2),
@@ -42,6 +67,8 @@ impl DocxWriter {
             images: Vec::new(),
             rel_id_counter: 0,
             footnote_defs: Vec::new(),
+            heading_counters: [0; 6],
+            theme,
         }
     }
 }
@@ -161,6 +188,14 @@ impl DocxWriter {
             .with_attributes([("xmlns:w", "http://schemas.openxmlformats.org/wordprocessingml/2006/main")])))
             .map_err(|e| e.to_string())?;
 
+        // Extract theme values to owned strings to avoid borrowing self in closures
+        let body_font = if self.theme.body_font.is_empty() { "Calibri".to_string() } else { self.theme.body_font.clone() };
+        let head_font = if self.theme.heading_font.is_empty() { "Calibri".to_string() } else { self.theme.heading_font.clone() };
+        let code_font = if self.theme.code_font.is_empty() { "Consolas".to_string() } else { self.theme.code_font.clone() };
+        let body_color = self.theme.body_color.clone();
+        let code_bg = if self.theme.code_bg.is_empty() { "F5F5F5".to_string() } else { self.theme.code_bg.clone() };
+        let code_color = if !self.theme.code_color.is_empty() { self.theme.code_color.clone() } else { body_color.clone() };
+
         // Normal style
         self.write_style("Normal", "Normal", "Para", true, |w| {
             w.write_event(Event::Start(BytesStart::new("w:pPr"))).unwrap();
@@ -170,21 +205,26 @@ impl DocxWriter {
             w.write_event(Event::Empty(spacing)).unwrap();
             w.write_event(Event::End(BytesEnd::new("w:pPr"))).unwrap();
             w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
-            write_rfont(w, "Calibri");
+            write_rfont(w, &body_font);
             write_sz(w, 22); // 11pt * 2
+            if !body_color.is_empty() {
+                let mut col_elem = BytesStart::new("w:color");
+                col_elem.push_attribute(("w:val", body_color.as_str()));
+                w.write_event(Event::Empty(col_elem)).unwrap();
+            }
             w.write_event(Event::End(BytesEnd::new("w:rPr"))).unwrap();
         })?;
 
-        // Heading 1-6 styles
-        let headings: [(&str, &str, u16, bool, Option<&str>, &str); 6] = [
-            ("Heading1", "heading 1", 48, true,  Some("2B579A"), "Cambria"), // H1: 24pt, bold, dark blue
-            ("Heading2", "heading 2", 36, true,  Some("2B579A"), "Cambria"), // H2: 18pt, bold, dark blue
-            ("Heading3", "heading 3", 28, true,  None,           "Cambria"), // H3: 14pt, bold
-            ("Heading4", "heading 4", 24, false, None,           "Cambria"), // H4: 12pt, italic (not bold)
-            ("Heading5", "heading 5", 22, true,  None,           "Calibri"), // H5: 11pt, bold, Calibri
-            ("Heading6", "heading 6", 20, true,  None,           "Calibri"), // H6: 10pt, bold, Calibri
+        // Heading 1-6 styles — keep structural data, apply theme font/color
+        let headings: [(&str, &str, u16, &str); 6] = [
+            ("Heading1", "heading 1", 48, "true"),
+            ("Heading2", "heading 2", 36, "true"),
+            ("Heading3", "heading 3", 28, "true"),
+            ("Heading4", "heading 4", 24, "false"),
+            ("Heading5", "heading 5", 22, "true"),
+            ("Heading6", "heading 6", 20, "true"),
         ];
-        for (style_id, name, sz, bold, color, font) in &headings {
+        for (style_id, name, sz, bold) in &headings {
             self.write_style(style_id, name, "Para", false, |w| {
                 w.write_event(Event::Start(BytesStart::new("w:pPr"))).unwrap();
                 let mut spacing = BytesStart::new("w:spacing");
@@ -193,16 +233,16 @@ impl DocxWriter {
                 w.write_event(Event::Empty(spacing)).unwrap();
                 w.write_event(Event::End(BytesEnd::new("w:pPr"))).unwrap();
                 w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
-                write_rfont(w, font);
-                if *bold {
+                write_rfont(w, &head_font);
+                if *bold == "true" {
                     w.write_event(Event::Empty(BytesStart::new("w:b"))).unwrap();
                 }
                 if *style_id == "Heading4" {
                     w.write_event(Event::Empty(BytesStart::new("w:i"))).unwrap();
                 }
-                if let Some(c) = color {
+                if !body_color.is_empty() {
                     let mut col_elem = BytesStart::new("w:color");
-                    col_elem.push_attribute(("w:val", *c));
+                    col_elem.push_attribute(("w:val", body_color.as_str()));
                     w.write_event(Event::Empty(col_elem)).unwrap();
                 }
                 write_sz(w, *sz);
@@ -210,14 +250,19 @@ impl DocxWriter {
             })?;
         }
 
-        // Code paragraph style (for code blocks)
+        // Code paragraph style
         self.write_style("Code", "Code", "Para", false, |w| {
             w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
-            write_rfont_code(w);
+            write_rfont(w, &code_font);
             write_sz(w, 19);
+            if !code_color.is_empty() {
+                let mut col = BytesStart::new("w:color");
+                col.push_attribute(("w:val", code_color.as_str()));
+                w.write_event(Event::Empty(col)).unwrap();
+            }
             let mut shd = BytesStart::new("w:shd");
             shd.push_attribute(("w:val", "clear"));
-            shd.push_attribute(("w:fill", "F5F5F5"));
+            shd.push_attribute(("w:fill", code_bg.as_str()));
             w.write_event(Event::Empty(shd)).unwrap();
             w.write_event(Event::End(BytesEnd::new("w:rPr"))).unwrap();
         })?;
@@ -225,16 +270,21 @@ impl DocxWriter {
         // Code character style (for inline code)
         self.write_style("CodeLang", "CodeLang", "Char", false, |w| {
             w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
-            write_rfont_code(w);
+            write_rfont(w, &code_font);
             write_sz(w, 19);
+            if !code_color.is_empty() {
+                let mut col = BytesStart::new("w:color");
+                col.push_attribute(("w:val", code_color.as_str()));
+                w.write_event(Event::Empty(col)).unwrap();
+            }
             let mut shd = BytesStart::new("w:shd");
             shd.push_attribute(("w:val", "clear"));
-            shd.push_attribute(("w:fill", "F5F5F5"));
+            shd.push_attribute(("w:fill", code_bg.as_str()));
             w.write_event(Event::Empty(shd)).unwrap();
             w.write_event(Event::End(BytesEnd::new("w:rPr"))).unwrap();
         })?;
 
-        // ListParagraph style (for list items)
+        // ListParagraph style
         self.write_style("ListParagraph", "List Paragraph", "Para", false, |w| {
             w.write_event(Event::Start(BytesStart::new("w:pPr"))).unwrap();
             let mut ind = BytesStart::new("w:ind");
@@ -242,7 +292,7 @@ impl DocxWriter {
             w.write_event(Event::Empty(ind)).unwrap();
             w.write_event(Event::End(BytesEnd::new("w:pPr"))).unwrap();
             w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
-            write_rfont(w, "Calibri");
+            write_rfont(w, &body_font);
             write_sz(w, 22);
             w.write_event(Event::End(BytesEnd::new("w:rPr"))).unwrap();
         })?;
@@ -255,7 +305,7 @@ impl DocxWriter {
             w.write_event(Event::Empty(ind)).unwrap();
             w.write_event(Event::End(BytesEnd::new("w:pPr"))).unwrap();
             w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
-            write_rfont(w, "Calibri");
+            write_rfont(w, &body_font);
             write_sz(w, 22);
             w.write_event(Event::Empty(BytesStart::new("w:i"))).unwrap();
             w.write_event(Event::End(BytesEnd::new("w:rPr"))).unwrap();
@@ -291,14 +341,6 @@ impl DocxWriter {
 // ═══════════════════════════════════════════════════════════════════════
 // Helper: font/size writers (standalone functions)
 // ═══════════════════════════════════════════════════════════════════════
-
-fn write_rfont_code(w: &mut Writer<Vec<u8>>) {
-    let mut rfonts = BytesStart::new("w:rFonts");
-    rfonts.push_attribute(("w:ascii", "Consolas"));
-    rfonts.push_attribute(("w:hAnsi", "Consolas"));
-    rfonts.push_attribute(("w:cs", "Consolas"));
-    w.write_event(Event::Empty(rfonts)).unwrap();
-}
 
 fn write_rfont(w: &mut Writer<Vec<u8>>, font: &str) {
     let mut rfonts = BytesStart::new("w:rFonts");
@@ -378,7 +420,27 @@ impl DocxWriter {
         match node_value {
             NodeValue::Heading(heading) => {
                 let level = heading.level.min(6).max(1);
+                let idx = (level - 1) as usize;
+
+                // Update heading counters
+                self.heading_counters[idx] += 1;
+                for c in &mut self.heading_counters[idx + 1..] {
+                    *c = 0;
+                }
+
+                // Build number prefix (e.g. "1.2.3")
+                let mut num_str = String::new();
+                for (i, c) in self.heading_counters.iter().enumerate() {
+                    if *c == 0 { break; }
+                    if !num_str.is_empty() { num_str.push('.'); }
+                    num_str.push_str(&c.to_string());
+                    if i == idx { break; }
+                }
+                let prefix = format!("{}  ", num_str);
+
                 self.write_paragraph_start(Some(&format!("Heading{}", level)), None);
+                // Write number prefix as a regular text run
+                self.write_text_run(&prefix);
                 for child in node.children() {
                     self.walk_ast(child, base_path);
                 }
@@ -476,11 +538,21 @@ impl DocxWriter {
             }
 
             NodeValue::BlockQuote => {
-                self.write_paragraph_start(Some("Quote"), None);
                 for child in node.children() {
-                    self.walk_ast(child, base_path);
+                    match &child.data.borrow().value {
+                        // Each paragraph inside a blockquote gets its own <w:p> with Quote style
+                        NodeValue::Paragraph => {
+                            self.write_paragraph_start(Some("Quote"), None);
+                            for text_child in child.children() {
+                                self.walk_ast(text_child, base_path);
+                            }
+                            self.write_paragraph_end();
+                        }
+                        _ => {
+                            self.walk_ast(child, base_path);
+                        }
+                    }
                 }
-                self.write_paragraph_end();
             }
 
             NodeValue::Table(_table) => {
@@ -634,13 +706,21 @@ impl DocxWriter {
     }
 
     fn write_code_run(&mut self, code: &str) {
+        let code_font = self.code_font_fallback();
+        let code_bg = self.code_bg_fallback();
+        let code_color = self.code_color_fallback();
         let w = &mut self.document;
         w.write_event(Event::Start(BytesStart::new("w:r"))).unwrap();
         w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
-        write_rfont_code(w);
+        write_rfont(w, &code_font);
+        if !code_color.is_empty() {
+            let mut col = BytesStart::new("w:color");
+            col.push_attribute(("w:val", code_color.as_str()));
+            w.write_event(Event::Empty(col)).unwrap();
+        }
         let mut shd = BytesStart::new("w:shd");
         shd.push_attribute(("w:val", "clear"));
-        shd.push_attribute(("w:fill", "F5F5F5"));
+        shd.push_attribute(("w:fill", code_bg.as_str()));
         w.write_event(Event::Empty(shd)).unwrap();
         write_sz(w, 20); // 10pt
         w.write_event(Event::End(BytesEnd::new("w:rPr"))).unwrap();
@@ -673,7 +753,30 @@ impl DocxWriter {
         w.write_event(Event::End(BytesEnd::new("w:p"))).unwrap();
     }
 
+    fn code_font_fallback(&self) -> String {
+        if self.theme.code_font.is_empty() { "Consolas".to_string() } else { self.theme.code_font.clone() }
+    }
+
+    fn code_bg_fallback(&self) -> String {
+        if self.theme.code_bg.is_empty() { "F5F5F5".to_string() } else { self.theme.code_bg.clone() }
+    }
+
+    fn code_color_fallback(&self) -> String {
+        // Falls back to body_color for consistency with WYSIWYG (both use --mid-10).
+        // If both are empty, no color override is applied.
+        if !self.theme.code_color.is_empty() {
+            self.theme.code_color.clone()
+        } else if !self.theme.body_color.is_empty() {
+            self.theme.body_color.clone()
+        } else {
+            String::new()
+        }
+    }
+
     fn write_code_block(&mut self, lang: &str, code: &str) {
+        let code_font = self.code_font_fallback();
+        let code_color = self.code_color_fallback();
+        let _code_bg = self.code_bg_fallback(); // kept for future use (bg rect not avail via OOXML pStyle shading)
         let w = &mut self.document;
 
         // Language label line (if present)
@@ -685,7 +788,7 @@ impl DocxWriter {
             // lang label run — smaller, muted, italic
             w.write_event(Event::Start(BytesStart::new("w:r"))).unwrap();
             w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
-            write_rfont_code(w);
+            write_rfont(w, &code_font);
             let mut color = BytesStart::new("w:color");
             color.push_attribute(("w:val", "888888"));
             w.write_event(Event::Empty(color)).unwrap();
@@ -714,7 +817,12 @@ impl DocxWriter {
         for (i, line) in lines.iter().enumerate() {
             w.write_event(Event::Start(BytesStart::new("w:r"))).unwrap();
             w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
-            write_rfont_code(w);
+            write_rfont(w, &code_font);
+            if !code_color.is_empty() {
+                let mut col = BytesStart::new("w:color");
+                col.push_attribute(("w:val", code_color.as_str()));
+                w.write_event(Event::Empty(col)).unwrap();
+            }
             write_sz(w, 19); // 9.5pt
             w.write_event(Event::End(BytesEnd::new("w:rPr"))).unwrap();
             w.write_event(Event::Start(BytesStart::new("w:t"))).unwrap();
@@ -1456,7 +1564,7 @@ mod tests {
     #[test]
     fn test_generate_minimal_docx() {
         let md = "# Hello\n\nWorld";
-        let result = generate(md, "");
+        let result = generate(md, "", "");
         assert!(result.is_ok(), "generate failed: {:?}", result.err());
         let bytes = result.unwrap();
 
@@ -1474,7 +1582,7 @@ mod tests {
     #[test]
     fn test_generate_headings() {
         let md = "# H1\n## H2\n### H3\nParagraph text\n\n**bold** *italic* `code`";
-        let bytes = generate(md, "").unwrap();
+        let bytes = generate(md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1491,7 +1599,7 @@ mod tests {
     #[test]
     fn test_generate_inline_formatting() {
         let md = "**bold** *italic* `code` ~~strike~~ normal";
-        let bytes = generate(md, "").unwrap();
+        let bytes = generate(md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1505,7 +1613,7 @@ mod tests {
     #[test]
     fn test_generate_table() {
         let md = "| H1 | H2 |\n|---|---|\n| A | B |";
-        let bytes = generate(md, "").unwrap();
+        let bytes = generate(md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1518,7 +1626,7 @@ mod tests {
     #[test]
     fn test_generate_lists() {
         let md = "- Item 1\n- Item 2\n\n1. One\n2. Two";
-        let bytes = generate(md, "").unwrap();
+        let bytes = generate(md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1531,7 +1639,7 @@ mod tests {
     #[test]
     fn test_generate_links() {
         let md = "[Example](https://example.com)";
-        let bytes = generate(md, "").unwrap();
+        let bytes = generate(md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1548,7 +1656,7 @@ mod tests {
     #[test]
     fn test_generate_blockquote() {
         let md = "> This is a quote";
-        let bytes = generate(md, "").unwrap();
+        let bytes = generate(md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1559,7 +1667,7 @@ mod tests {
     #[test]
     fn test_generate_with_image() {
         let md = "![test](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==)";
-        let bytes = generate(md, "").unwrap();
+        let bytes = generate(md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1576,7 +1684,7 @@ mod tests {
         let md = "# Hello
 
 **bold** [link](https://example.com) ![img](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==)";
-        let bytes = generate(md, "").unwrap();
+        let bytes = generate(md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1601,7 +1709,7 @@ mod tests {
     #[test]
     fn test_generate_wikilinks() {
         let md = "[[Page]] and [[Other|Display]]";
-        let bytes = generate(md, "").unwrap();
+        let bytes = generate(md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1614,7 +1722,7 @@ mod tests {
     #[test]
     fn test_generate_tasklist() {
         let md = "- [ ] Unchecked\n- [x] Checked";
-        let bytes = generate(md, "").unwrap();
+        let bytes = generate(md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1628,7 +1736,7 @@ mod tests {
     #[test]
     fn test_generate_codeblock_with_lang() {
         let md = "```rust\nfn main() {}\n```";
-        let bytes = generate(md, "").unwrap();
+        let bytes = generate(md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1640,7 +1748,7 @@ mod tests {
     #[test]
     fn test_generate_cjk() {
         let md = "# 中文标题\n\n这是中文段落。";
-        let bytes = generate(md, "").unwrap();
+        let bytes = generate(md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1651,7 +1759,7 @@ mod tests {
 
     #[test]
     fn test_generate_empty() {
-        let result = generate("", "");
+        let result = generate("", "", "");
         assert!(result.is_ok(), "Empty input should produce valid minimal docx, got: {:?}", result.err());
         let bytes = result.unwrap();
         use zip::ZipArchive;
@@ -1664,7 +1772,7 @@ mod tests {
     #[test]
     fn test_generate_footnotes() {
         let md = "Text[^1] more text.\n\n[^1]: Footnote content here.";
-        let bytes = generate(md, "").unwrap();
+        let bytes = generate(md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1675,7 +1783,7 @@ mod tests {
     #[test]
     fn test_docx_is_valid_zip() {
         let md = "# Hello\n\nWorld\n\n- Item 1\n- Item 2\n\n[^1]: A footnote.";
-        let bytes = generate(md, "").unwrap();
+        let bytes = generate(md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1830,7 +1938,7 @@ mod tests {
         let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, svg_data.as_bytes());
         let md = format!("![test](data:image/svg+xml;base64,{})", b64);
 
-        let bytes = generate(&md, "").unwrap();
+        let bytes = generate(&md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1864,7 +1972,7 @@ mod tests {
         let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, svg_data.as_bytes());
         let md = format!("![test](data:image/svg+xml;base64,{})", b64);
 
-        let bytes = generate(&md, "").unwrap();
+        let bytes = generate(&md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1891,7 +1999,7 @@ mod tests {
     #[test]
     fn test_package_rels_references_document() {
         let md = "# Test";
-        let bytes = generate(md, "").unwrap();
+        let bytes = generate(md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
