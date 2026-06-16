@@ -368,7 +368,7 @@ export function ExportDialog() {
         }
         case 'pdf':
           await invoke('export_pdf', {
-            source,
+            source: embeddedSource,
             outputPath: path,
             basePath: currentDir || '',
             theme,

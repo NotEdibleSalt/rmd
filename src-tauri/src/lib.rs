@@ -4,6 +4,7 @@ mod export;
 mod docx;
 mod filesystem;
 mod markdown;
+mod pdf_export_webview;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Emitter, Manager};
@@ -61,6 +62,7 @@ pub fn run() {
             commands::workspace::scan_workspace,
             commands::workspace::find_backlinks,
             commands::workspace::get_graph_data,
+            pdf_export_webview::export_pdf_webview,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

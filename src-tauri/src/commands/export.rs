@@ -1,4 +1,5 @@
 use crate::export;
+use tauri::AppHandle;
 
 #[tauri::command]
 pub fn export_html(source: &str, title: &str, theme: &str, base_path: &str, markdown_theme_css: Option<&str>) -> Result<String, String> {
@@ -6,8 +7,24 @@ pub fn export_html(source: &str, title: &str, theme: &str, base_path: &str, mark
 }
 
 #[tauri::command]
-pub fn export_pdf(source: &str, output_path: &str, base_path: &str, theme: &str, markdown_theme_css: Option<&str>) -> Result<(), String> {
-    export::export_to_pdf(source, output_path, base_path, theme, markdown_theme_css.unwrap_or(""))
+pub async fn export_pdf(
+    app: AppHandle,
+    source: String,
+    output_path: String,
+    base_path: String,
+    theme: String,
+    markdown_theme_css: Option<String>,
+) -> Result<(), String> {
+    // Build HTML from source (reuses export_to_html for consistent rendering)
+    let html = export::export_to_html(
+        &source,
+        "PDF Export",
+        &theme,
+        &base_path,
+        markdown_theme_css.as_deref().unwrap_or(""),
+    )?;
+    // Delegate to webview-based PDF export
+    crate::pdf_export_webview::export_pdf_webview(app, html, output_path, vec![]).await
 }
 
 #[tauri::command]
