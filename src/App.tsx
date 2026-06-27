@@ -258,7 +258,6 @@ function App() {
     <MarkdownThemeProvider>
     <div className="app-container">
       <Toolbar />
-      <TabBar />
       <div className="app-body" onPointerMove={onResizeMove} onPointerUp={onResizeEnd} onPointerCancel={onResizeEnd}>
         {fileBrowserOpen && (
           <>
@@ -268,13 +267,16 @@ function App() {
             <div className="resize-handle resize-handle-right" onPointerDown={onResizeStart('left')} />
           </>
         )}
-        <div className="main-content" key={viewMode}>
-          {hasNoTabs ? <WelcomeScreen /> : (
-            <>
-              {findReplaceOpen && <FindReplace />}
-              {renderMainView(viewMode)}
-            </>
-          )}
+        <div className="main-column">
+          <TabBar />
+          <div className="main-content" key={viewMode}>
+            {hasNoTabs ? <WelcomeScreen /> : (
+              <>
+                {findReplaceOpen && <FindReplace />}
+                {renderMainView(viewMode)}
+              </>
+            )}
+          </div>
         </div>
         {outlineOpen && (
           <>
