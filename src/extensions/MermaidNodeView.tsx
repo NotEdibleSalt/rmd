@@ -86,7 +86,7 @@ function getMermaidTheme() {
 export function MermaidNodeView({ node, updateAttributes, selected }: NodeViewProps) {
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState(true);
+  const [editing, setEditing] = useState(false);
   const [code, setCode] = useState(node.attrs.content || '');
   const codeRef = useRef(code);
   codeRef.current = code;

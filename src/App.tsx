@@ -18,6 +18,7 @@ import { SavePromptModal } from './SavePromptModal';
 import { WelcomeScreen } from './WelcomeScreen';
 import { BacklinksPanel } from './BacklinksPanel';
 import { GraphView } from './GraphView';
+import { ErrorBoundary } from './ErrorBoundary';
 import './App.css';
 import './code-highlight.css';
 
@@ -256,6 +257,7 @@ function App() {
 
   return (
     <MarkdownThemeProvider>
+    <ErrorBoundary>
     <div className="app-container">
       <Toolbar />
       <div className="app-body" onPointerMove={onResizeMove} onPointerUp={onResizeEnd} onPointerCancel={onResizeEnd}>
@@ -339,6 +341,7 @@ function App() {
         />
       )}
     </div>
+    </ErrorBoundary>
     </MarkdownThemeProvider>
   );
 }

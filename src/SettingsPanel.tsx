@@ -74,6 +74,17 @@ export function SettingsPanel() {
               <span className="setting-value">{config.editor_font_size}px</span>
             </div>
             <div className="setting-row">
+              <label>等宽字体</label>
+              <select value={config.font_family || 'system-ui'} onChange={(e) => update({ font_family: e.target.value })}>
+                <option value="system-ui">系统默认</option>
+                <option value="'JetBrains Mono', 'Fira Code', 'Consolas', monospace">JetBrains Mono</option>
+                <option value="'Fira Code', 'Consolas', monospace">Fira Code</option>
+                <option value="'Consolas', 'Monaco', monospace">Consolas</option>
+                <option value="'Source Code Pro', monospace">Source Code Pro</option>
+                <option value="'Cascadia Code', monospace">Cascadia Code</option>
+              </select>
+            </div>
+            <div className="setting-row">
               <label>预览字号</label>
               <input type="range" min="12" max="24" value={config.preview_font_size} onChange={(e) => update({ preview_font_size: parseInt(e.target.value) })} />
               <span className="setting-value">{config.preview_font_size}px</span>
@@ -99,6 +110,14 @@ export function SettingsPanel() {
               <label>语法提示</label>
               <input type="checkbox" checked={config.syntax_hint} onChange={(e) => update({ syntax_hint: e.target.checked })} />
             </div>
+            <div className="setting-row">
+              <label>拼写检查</label>
+              <input type="checkbox" checked={config.spell_check} onChange={(e) => update({ spell_check: e.target.checked })} />
+            </div>
+            <div className="setting-row">
+              <label>自动格式化</label>
+              <input type="checkbox" checked={config.auto_format} onChange={(e) => update({ auto_format: e.target.checked })} />
+            </div>
           </div>
 
           <div className="settings-section">
@@ -119,6 +138,44 @@ export function SettingsPanel() {
                 <option value="eye-care">护眼</option>
                 <option value="minimal">简约</option>
               </select>
+            </div>
+            <div className="setting-row">
+              <label>工作区根目录</label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flex: 1 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                  {config.workspace_root || '(未设置)'}
+                </span>
+                <button
+                  className="btn btn-secondary"
+                  onClick={async () => {
+                    try {
+                      const { open } = await import('@tauri-apps/plugin-dialog');
+                      const selected = await open({
+                        directory: true,
+                        multiple: false,
+                        title: '选择工作区根目录',
+                      });
+                      if (selected) {
+                        update({ workspace_root: selected });
+                        const { setWorkspaceRoot } = useEditorStore.getState();
+                        await setWorkspaceRoot(selected);
+                      }
+                    } catch { /* not in tauri */ }
+                  }}
+                  style={{ flexShrink: 0 }}
+                >
+                  选择目录
+                </button>
+                {config.workspace_root && (
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => update({ workspace_root: '' })}
+                    style={{ flexShrink: 0 }}
+                  >
+                    清除
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

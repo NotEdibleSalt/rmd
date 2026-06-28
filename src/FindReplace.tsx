@@ -9,8 +9,9 @@ export function FindReplace() {
   const setFindQuery = useEditorStore((s) => s.setFindQuery);
   const setReplaceQuery = useEditorStore((s) => s.setReplaceQuery);
   const setFindReplaceOpen = useEditorStore((s) => s.setFindReplaceOpen);
+  const caseSensitive = useEditorStore((s) => s.findCaseSensitive);
+  const setCaseSensitive = useEditorStore((s) => s.setFindCaseSensitive);
 
-  const [caseSensitive, setCaseSensitive] = useState(false);
   const [matchIndex, setMatchIndex] = useState(0);
   const [matches, setMatches] = useState<{ index: number; length: number }[]>([]);
   const [showReplace, setShowReplace] = useState(false);

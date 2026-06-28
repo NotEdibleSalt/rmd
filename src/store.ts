@@ -127,6 +127,10 @@ interface EditorStore {
   findReplaceOpen: boolean;
   findQuery: string;
   replaceQuery: string;
+  findCaseSensitive: boolean;
+
+  // Scroll-to-line (for backlinks navigation)
+  scrollToLine: number | null;
 
   // Keyboard shortcuts help
   shortcutsOpen: boolean;
@@ -175,12 +179,14 @@ interface EditorStore {
   setFindReplaceOpen: (open: boolean) => void;
   setFindQuery: (q: string) => void;
   setReplaceQuery: (q: string) => void;
+  setFindCaseSensitive: (v: boolean) => void;
   setShortcutsOpen: (open: boolean) => void;
   setMarkdownTheme: (id: string) => void;
   setMarkdownThemeName: (name: string) => void;
   setExternalThemePath: (path: string | null) => void;
   setExternalThemeEntries: (entries: { id: string; name: string; path: string }[]) => void;
   setRecentFiles: (files: string[]) => void;
+  setScrollToLine: (line: number | null) => void;
 
   // Tab management
   newTab: () => string;
@@ -331,6 +337,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     findReplaceOpen: false,
     findQuery: '',
     replaceQuery: '',
+    findCaseSensitive: false,
+    scrollToLine: null,
     shortcutsOpen: false,
     markdownTheme: '',
     markdownThemeName: '',
@@ -371,12 +379,14 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     setFindReplaceOpen: (open) => set({ findReplaceOpen: open, findQuery: '', replaceQuery: '' }),
     setFindQuery: (q) => set({ findQuery: q }),
     setReplaceQuery: (q) => set({ replaceQuery: q }),
+    setFindCaseSensitive: (v) => set({ findCaseSensitive: v }),
     setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
     setMarkdownTheme: (id) => set({ markdownTheme: id }),
     setMarkdownThemeName: (name) => set({ markdownThemeName: name }),
     setExternalThemePath: (path) => set({ externalThemePath: path }),
     setExternalThemeEntries: (entries) => set({ externalThemeEntries: entries }),
     setRecentFiles: (files) => set({ recentFiles: files }),
+    setScrollToLine: (line) => set({ scrollToLine: line }),
 
     /* ─── Tab management ─── */
 
@@ -551,8 +561,23 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       const tab = state.tabs.find(t => t.id === tabId);
       if (!tab?.path) return;
       setSaveStatusWithReset('saving');
+      let content = tab.source;
+      if (state.config.auto_format) {
+        // ponytail: whitespace-only normalization — collapses 3+ blank lines to 2,
+        // trims trailing space, ensures single trailing newline.
+        content = content
+          .replace(/[ \t]+$/gm, '')           // trailing whitespace per line
+          .replace(/\n{3,}/g, '\n\n')          // excessive blank lines
+          .replace(/\n*$/, '\n');              // exactly one trailing newline
+      }
       try {
-        await invoke('save_file', { path: tab.path, content: tab.source });
+        if (content !== tab.source) {
+          // Sync normalized content back to store without triggering setSource side effects
+          set(s => ({
+            tabs: s.tabs.map(t => t.id === tabId ? { ...t, source: content } : t),
+          }));
+        }
+        await invoke('save_file', { path: tab.path, content });
         set(state => ({
           tabs: state.tabs.map(t =>
             t.id === tabId ? { ...t, isModified: false } : t

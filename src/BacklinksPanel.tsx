@@ -94,13 +94,14 @@ export function BacklinksPanel() {
     });
   };
 
+  const setScrollToLine = useEditorStore((s) => s.setScrollToLine);
+
   const handleOpenLine = (filePath: string, lineNumber: number) => {
     openFile(filePath)
       .then(() => {
-        // The Wysiwyg/Source editors don't expose a generic "scroll to line"
-        // API yet, but we surface the line number so the user can find it
-        // quickly. Future tasks can wire editor-level line jumping.
-        console.log(`Backlink target opened at line ${lineNumber}: ${filePath}`);
+        // After the file opens, the SourceEditor watches scrollToLine
+        // and scrolls CodeMirror to the target line.
+        setTimeout(() => setScrollToLine(lineNumber), 100);
       })
       .catch((e) => {
         console.error('Open backlink line failed:', e);

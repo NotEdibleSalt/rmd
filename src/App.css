@@ -3196,6 +3196,26 @@ body {
   color: var(--text-secondary);
 }
 
+/* ===== Find & Replace — editor highlighting ===== */
+.search-highlight {
+  background: #ffd54f80;
+  border-radius: 2px;
+}
+
+.dark .search-highlight,
+[data-theme="dark"] .search-highlight {
+  background: #ffd54f40;
+}
+
+.cm-editor .cm-searchHighlight {
+  background: #ffd54f80 !important;
+  border-radius: 2px;
+}
+
+[data-theme="dark"] .cm-editor .cm-searchHighlight {
+  background: #ffd54f40 !important;
+}
+
 /* ===== Keyboard Shortcuts Help Panel (UX-3d) ===== */
 .shortcuts-dialog {
   max-width: 520px;

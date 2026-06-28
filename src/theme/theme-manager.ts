@@ -2,6 +2,7 @@ import { useEditorStore } from '../store';
 
 // Raw CSS imports from built-in themes
 import goodseeLight from './goodsee/goodsee.css?raw';
+import goodseeDark from './goodsee/goodsee-dark.css?raw';
 export type MdThemeMode = 'light' | 'dark';
 
 export interface MdThemeEntry {
@@ -17,6 +18,7 @@ export interface MdThemeEntry {
 // Built-in theme definitions
 const BUILTIN_THEMES: MdThemeEntry[] = [
   { id: 'goodsee', name: 'Goodsee', category: 'builtin', mode: 'light', css: goodseeLight },
+  { id: 'goodsee-dark', name: 'Goodsee Dark', category: 'builtin', mode: 'dark', css: goodseeDark },
 ];
 
 const STYLE_ID = 'rmd-markdown-theme';

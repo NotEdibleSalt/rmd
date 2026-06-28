@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent, mergeAttributes, ReactNodeViewRenderer, type Editor } from '@tiptap/react';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from '@tiptap/markdown';
@@ -125,6 +127,12 @@ export function WysiwygEditor() {
   const clearImageInsert = useEditorStore((s) => s.clearImageInsert);
   const insertImageFromPath = useEditorStore((s) => s.insertImageFromPath);
 
+  // Search highlight state — shared with the ProseMirror plugin via ref
+  const searchRef = useRef({ query: '', caseSensitive: false });
+  const findQuery = useEditorStore((s) => s.findQuery);
+  const findReplaceOpen = useEditorStore((s) => s.findReplaceOpen);
+  const findCaseSensitive = useEditorStore((s) => s.findCaseSensitive);
+
   // Link edit popover state
   const [linkEdit, setLinkEdit] = useState<{
     href: string;
@@ -213,6 +221,34 @@ export function WysiwygEditor() {
       HeadingAfterHardBreak,
       BlockquoteAfterHardBreak,
       HorizontalRuleAfterHardBreak,
+      // ProseMirror plugin: highlight find-and-replace matches
+      new Plugin({
+        key: new PluginKey('search'),
+        state: {
+          init() { return DecorationSet.empty; },
+          apply(tr) {
+            const { query, caseSensitive } = searchRef.current;
+            if (!query) return DecorationSet.empty;
+            const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const flags = caseSensitive ? 'g' : 'gi';
+            const regex = new RegExp(escaped, flags);
+            const decorations: Decoration[] = [];
+            tr.doc.descendants((node: any, pos: number) => {
+              if (node.isText) {
+                const text = node.text || '';
+                let m: RegExpExecArray | null;
+                while ((m = regex.exec(text)) !== null) {
+                  decorations.push(Decoration.inline(pos + m.index, pos + m.index + m[0].length, { class: 'search-highlight' }));
+                }
+              }
+            });
+            return DecorationSet.create(tr.doc, decorations);
+          },
+        },
+        props: {
+          decorations(state) { return this.getState(state); },
+        },
+      }),
     ],
     content: source,
     contentType: 'markdown' as any,
@@ -416,6 +452,15 @@ export function WysiwygEditor() {
     return () => setEditorInstance(null);
   }, [editor]);
 
+  // Find & Replace: update search highlight decorations
+  useEffect(() => {
+    searchRef.current = { query: findReplaceOpen ? findQuery : '', caseSensitive: findCaseSensitive };
+    if (editor) {
+      // Force the search plugin to re-evaluate decorations
+      editor.view.dispatch(editor.state.tr);
+    }
+  }, [findQuery, findReplaceOpen, findCaseSensitive, editor]);
+
   // Resolve existing image references after editor mounts
   useEffect(() => {
     if (!editor) return;
@@ -527,6 +572,12 @@ export function WysiwygEditor() {
     if (!editor) return;
     editor.view.dom.setAttribute('spellcheck', String(config.spell_check));
   }, [config.spell_check, editor]);
+
+  // font_family: apply to ProseMirror content area
+  useEffect(() => {
+    if (!editor) return;
+    editor.view.dom.style.fontFamily = config.font_family === 'system-ui' ? '' : config.font_family;
+  }, [config.font_family, editor]);
 
   if (!editor) return null;
 

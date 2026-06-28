@@ -47,6 +47,7 @@ export function SourceEditor() {
       const lineNumbersCompartment = new Compartment();
       const wrapCompartment = new Compartment();
       const spellcheckCompartment = new Compartment();
+      const searchCompartment = new Compartment();
 
       // Light theme using CSS variables from App.css
       const lightTheme = EditorView.theme({
@@ -103,6 +104,7 @@ export function SourceEditor() {
           lineNumbersCompartment.of(config.line_numbers ? lineNumbers() : []),
           wrapCompartment.of(config.word_wrap ? EditorView.lineWrapping : []),
           spellcheckCompartment.of(EditorView.contentAttributes.of({ spellcheck: config.spell_check ? "true" : "false" })),
+          searchCompartment.of([]),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               const md = update.state.doc.toString();
@@ -123,6 +125,7 @@ export function SourceEditor() {
           lineNumbersCompartment,
           wrapCompartment,
           spellcheckCompartment,
+          searchCompartment,
         },
       };
     }
@@ -151,6 +154,50 @@ export function SourceEditor() {
       }
     }
   }, [source]);
+
+  // Find & Replace: wire CodeMirror native search highlighting + navigation
+  const findQuery = useEditorStore((s) => s.findQuery);
+  const findReplaceOpen = useEditorStore((s) => s.findReplaceOpen);
+  const findCaseSensitive = useEditorStore((s) => s.findCaseSensitive);
+  useEffect(() => {
+    const ref = editorViewRef.current;
+    if (!ref) return;
+    const { view, compartments } = ref;
+    if (!compartments.searchCompartment) return;
+
+    (async () => {
+      if (!findReplaceOpen || !findQuery.trim()) {
+        view.dispatch({
+          effects: compartments.searchCompartment.reconfigure([]),
+        });
+        return;
+      }
+      const codemirrorSearch = await import('@codemirror/search');
+      const { search: searchExt, SearchQuery, setSearchQuery } = codemirrorSearch;
+      view.dispatch({
+        effects: [
+          compartments.searchCompartment.reconfigure(searchExt()),
+          setSearchQuery.of(new SearchQuery({ search: findQuery, caseSensitive: findCaseSensitive })),
+        ],
+      });
+    })();
+  }, [findQuery, findReplaceOpen, findCaseSensitive]);
+
+  // Scroll to a specific line when requested (from backlinks, etc.)
+  const scrollToLine = useEditorStore((s) => s.scrollToLine);
+  const setScrollToLine = useEditorStore((s) => s.setScrollToLine);
+  useEffect(() => {
+    const view = editorViewRef.current?.view;
+    if (!view || scrollToLine == null || !modulesRef.current) return;
+    const pos = view.state.doc.line(scrollToLine);
+    if (!pos) return;
+    const { EditorView } = modulesRef.current;
+    view.dispatch({
+      effects: EditorView.scrollIntoView(pos.from, { y: 'center' }),
+      selection: { anchor: pos.from },
+    });
+    setScrollToLine(null);
+  }, [scrollToLine, setScrollToLine]);
 
   // Reconfigure compartments when settings or theme change
   useEffect(() => {

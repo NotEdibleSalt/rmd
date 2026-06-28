@@ -1,0 +1,309 @@
+:root {
+  --primary-color: #e85d3a;
+
+  /* 中性色 — 暖灰，暗色版 */
+  --mid-1: #1a1a18;
+  --mid-2: #1f1f1d;
+  --mid-3: #262624;
+  --mid-4: #2e2e2b;
+  --mid-5: #3a3a36;
+  --mid-6: #4a4a46;
+  --mid-7: #6b6b66;
+  --mid-8: #8c8c88;
+  --mid-9: #a3a39e;
+  --mid-10: #bfbfba;
+  --mid-11: #d4d4cf;
+  --mid-12: #e8e8e3;
+  --mid-13: #f5f5f0;
+
+  /* 主题色 — 红橙色系（不变） */
+  --main-1: #5e1807;
+  --main-2: #85250e;
+  --main-3: #a33216;
+  --main-4: #c0401f;
+  --main-5: #d94f2a;
+  --main-6: #e85d3a;
+  --main-7: #f7a283;
+  --main-8: #fbc4ae;
+  --main-9: #fde0d4;
+  --main-10: #fef2ed;
+
+  /* 字体 */
+  --font-normal: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --font-code: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', 'Monaco', monospace;
+}
+
+html {
+  font-size: 15px;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-normal) !important;
+  line-height: 1.75;
+  color: var(--mid-10);
+  background-color: var(--mid-1);
+  -webkit-font-smoothing: antialiased;
+}
+
+#write {
+  max-width: 860px;
+  padding: 40px 30px 160px;
+  margin: 0 auto;
+}
+
+/* ── 段落 ── */
+#write p {
+  line-height: 1.8;
+  word-spacing: 0.04em;
+}
+
+/* ── 链接 ── */
+#write a {
+  color: var(--main-6);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+#write a:hover {
+  color: var(--main-7);
+  border-bottom-color: var(--main-5);
+}
+
+/* ── 标题 ── */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  color: var(--mid-12);
+}
+
+h1 { font-size: 2em; margin: 1.2em 0 0.5em; letter-spacing: -0.02em; font-weight: 700; }
+h2 { font-size: 1.6em; margin: 1.1em 0 0.4em; }
+h3 { font-size: 1.35em; margin: 1em 0 0.3em; }
+h4 { font-size: 1.15em; margin: 0.8em 0 0.2em; }
+h5, h6 { font-size: 1em; margin: 0.6em 0 0.2em; }
+
+/* ── 强调 ── */
+#write strong { color: var(--mid-12); font-weight: 700; }
+#write em { font-style: italic; }
+
+/* ── 引用块 ── */
+#write blockquote {
+  border-left: 4px solid var(--main-5);
+  padding: 0.3em 1em;
+  margin: 0.8em 0;
+  background: var(--mid-2);
+  border-radius: 0 6px 6px 0;
+  color: var(--mid-9);
+}
+
+#write blockquote blockquote { padding-right: 0; }
+
+/* ── 代码 ── */
+#write code {
+  font-family: var(--font-code);
+  font-size: 0.9em;
+  background: var(--mid-3);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  color: var(--main-6);
+}
+
+#write pre {
+  font-family: var(--font-code);
+  background: var(--mid-2);
+  border: 1px solid var(--mid-5);
+  border-radius: 8px;
+  padding: 16px;
+  overflow-x: auto;
+  line-height: 1.5;
+  font-size: 0.88em;
+}
+
+#write pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+/* ── 水平线 ── */
+#write hr {
+  border: none;
+  border-top: 2px solid var(--mid-5);
+  margin: 2em 0;
+}
+
+/* ── 列表 ── */
+#write ul, #write ol {
+  padding-left: 1.8em;
+}
+
+#write li {
+  margin: 0.3em 0;
+}
+
+#write li > p {
+  margin: 0.2em 0;
+}
+
+#write .md-task-list-item {
+  list-style: none;
+  margin-left: -1.2em;
+}
+
+#write .md-task-list-item > input[type="checkbox"] {
+  margin-right: 0.6em;
+}
+
+/* ── 表格 ── */
+#write table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 0.95em;
+}
+
+#write th, #write td {
+  border: 1px solid var(--mid-5);
+  padding: 0.5em 0.8em;
+  text-align: left;
+}
+
+#write th {
+  background: var(--mid-3);
+  font-weight: 600;
+  color: var(--mid-12);
+}
+
+#write tr:nth-child(even) {
+  background: var(--mid-2);
+}
+
+/* ── 图片 ── */
+#write img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 0.8em 0;
+}
+
+/* ── Markdown 脚注 ── */
+#write .md-footnote {
+  font-size: 0.85em;
+  color: var(--mid-7);
+}
+
+/* ── 任务列表 checkbox ── */
+#write input[type="checkbox"] {
+  accent-color: var(--main-5);
+}
+
+/* ── 代码块语言标签 ── */
+#write .md-fences {
+  position: relative;
+}
+
+#write .md-fences::before {
+  content: attr(data-language);
+  position: absolute;
+  top: 6px;
+  right: 12px;
+  font-size: 0.75em;
+  color: var(--mid-7);
+  font-family: var(--font-normal);
+}
+
+/* ── 滚动条 ── */
+#write pre::-webkit-scrollbar {
+  height: 6px;
+}
+
+#write pre::-webkit-scrollbar-thumb {
+  background: var(--mid-5);
+  border-radius: 3px;
+}
+
+#write pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ── 选中高亮 ── */
+#write ::selection {
+  background: var(--main-1);
+  color: var(--mid-12);
+}
+
+/* ── mark 标记 ── */
+#write mark {
+  background: rgba(232, 93, 58, 0.3);
+  color: var(--mid-12);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+
+/* ── 脚注分隔线 ── */
+#write .footnotes {
+  margin-top: 3em;
+  border-top: 1px solid var(--mid-5);
+  padding-top: 1em;
+}
+
+/* ── YAML front matter ── */
+#write pre.md-meta-block {
+  background: var(--mid-2);
+  border: 1px solid var(--mid-4);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--mid-7);
+  font-family: var(--font-code);
+  font-size: 0.85em;
+}
+
+/* ── 目录 ── */
+#write .md-toc {
+  margin: 1em 0;
+  padding: 1em;
+  background: var(--mid-2);
+  border-radius: 8px;
+  border: 1px solid var(--mid-4);
+}
+
+#write .md-toc-item {
+  line-height: 1.8;
+}
+
+#write .md-toc-item a {
+  color: var(--mid-9);
+  border-bottom: none;
+}
+
+#write .md-toc-item a:hover {
+  color: var(--main-6);
+}
+
+/* ── KaTeX 数学公式 ── */
+#write .katex { font-size: 1.05em; }
+#write .katex-display { margin: 0.8em 0; }
+
+/* ── 代码块行号 ── */
+#write .CodeMirror-linenumber {
+  color: var(--mid-6);
+}
+
+/* ── 标记语法颜色 ── */
+#write .cm-s-inner .cm-header { color: var(--main-6); }
+#write .cm-s-inner .cm-strong { color: var(--mid-12); }
+#write .cm-s-inner .cm-em { color: var(--mid-10); font-style: italic; }
+#write .cm-s-inner .cm-link { color: var(--main-6); }
+#write .cm-s-inner .cm-comment { color: var(--mid-7); }
+#write .cm-s-inner .cm-hr { color: var(--mid-6); }
+#write .cm-s-inner .cm-quote { color: var(--mid-8); }
+#write .cm-s-inner .cm-keyword { color: var(--main-6); }
+#write .cm-s-inner .cm-atom { color: #d19a66; }
+#write .cm-s-inner .cm-number { color: #d19a66; }
+#write .cm-s-inner .cm-def { color: #61afef; }
+#write .cm-s-inner .cm-variable { color: var(--mid-10); }
+#write .cm-s-inner .cm-variable-2 { color: #e5c07b; }
+#write .cm-s-inner .cm-builtin { color: #56b6c2; }
