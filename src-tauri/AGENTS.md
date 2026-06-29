@@ -13,8 +13,7 @@ src-tauri/
 ├── capabilities/
 │   └── default.json # ACL permissions for fs, shell, clipboard, dialog
 ├── icons/         # App icons (16 .png/.ico/.icns)
-├── gen/schemas/   # Auto-generated, gitignored
-└── examples/      # Empty — placeholder
+└── gen/schemas/   # Auto-generated, gitignored
 ```
 
 ## COMMANDS

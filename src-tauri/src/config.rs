@@ -21,6 +21,8 @@ pub struct AppConfig {
     #[serde(default)]
     pub recent_files: Vec<String>,
     #[serde(default)]
+    pub image_save_dir: String,
+    #[serde(default)]
     pub external_theme_path: String,
     #[serde(default)]
     pub external_theme_dir: String,
@@ -46,6 +48,7 @@ impl Default for AppConfig {
             syntax_hint: true,
             last_file: String::new(),
             recent_files: Vec::new(),
+            image_save_dir: String::new(),
             external_theme_path: String::new(),
             external_theme_dir: String::new(),
             workspace_root: String::new(),
