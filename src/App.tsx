@@ -18,6 +18,7 @@ import { SavePromptModal } from './SavePromptModal';
 import { WelcomeScreen } from './WelcomeScreen';
 import { BacklinksPanel } from './BacklinksPanel';
 import { GraphView } from './GraphView';
+import { ToastContainer } from './ToastContainer';
 import { ErrorBoundary } from './ErrorBoundary';
 import './App.css';
 import './code-highlight.css';
@@ -332,6 +333,7 @@ function App() {
       {searchOpen && <SearchPanel />}
       {shortcutsOpen && <ShortcutsPanel />}
       {graphViewOpen && <GraphView />}
+      <ToastContainer />
       {closeModalState && (
         <SavePromptModal
           message={closeModalState.message}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useEditorStore, selectSource, selectCurrentFile } from './store';
 import { resolveAbsolutePath } from './utils/image';
 
@@ -259,8 +259,14 @@ export function ExportDialog() {
   const [selectedFormat, setSelectedFormat] = useState('html');
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState('');
+  const cancelRef = useRef(false);
+
+  const handleCancel = () => {
+    cancelRef.current = true;
+  };
 
   const handleExport = async () => {
+    cancelRef.current = false;
     setExporting(true);
     setExportMsg('');
 
@@ -294,8 +300,10 @@ export function ExportDialog() {
       let embeddedSource = source;
       setExportMsg('正在渲染图表...');
       embeddedSource = await renderMermaidBlocks(embeddedSource, (msg) => setExportMsg(msg));
+      if (cancelRef.current) { setExporting(false); setExportMsg(''); return; }
       setExportMsg('正在嵌入本地图片...');
       embeddedSource = await embedImagesInSource(embeddedSource, currentDir || '');
+      if (cancelRef.current) { setExporting(false); setExportMsg(''); return; }
       const basePath = currentDir || '';
 
       // Extract the currently active markdown theme CSS from the DOM
@@ -420,9 +428,11 @@ export function ExportDialog() {
         </div>
         <div className="dialog-footer">
           <button className="btn btn-secondary" onClick={() => setExportDialogOpen(false)}>取消</button>
-          <button className="btn btn-primary" onClick={handleExport} disabled={exporting}>
-            {exporting ? '导出中...' : `导出为 ${exportFormats.find(f => f.id === selectedFormat)?.name}`}
-          </button>
+          {exporting ? (
+            <button className="btn btn-danger" onClick={handleCancel}>取消导出</button>
+          ) : (
+            <button className="btn btn-primary" onClick={handleExport}>导出为 {exportFormats.find(f => f.id === selectedFormat)?.name}</button>
+          )}
         </div>
       </div>
     </div>

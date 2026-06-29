@@ -149,6 +149,11 @@ interface EditorStore {
   // Save status indicator
   saveStatus: 'idle' | 'saving' | 'saved';
 
+  // Notifications
+  toasts: { id: string; message: string; type: 'error' | 'info' | 'success' }[];
+  addToast: (message: string, type?: 'error' | 'info' | 'success') => void;
+  removeToast: (id: string) => void;
+
   // Misc
   recentFiles: string[];
 
@@ -264,7 +269,7 @@ const debouncedAutoSave = debounce(async () => {
     useEditorStore.getState().setIsModified(false);
     setSaveStatusWithReset('saved');
   } catch (e) {
-    console.error('Auto-save error:', e);
+    useEditorStore.getState().addToast('自动保存失败');
     setSaveStatusWithReset('idle');
   }
 }, 2000);
@@ -347,6 +352,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     imageInsertData: null,
     imageSaveDir: '',
     saveStatus: 'idle',
+    toasts: [],
 
     setSaveStatus: (status) => set({ saveStatus: status }),
     setViewMode: (mode) => set({ viewMode: mode }),
@@ -543,7 +549,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
             invoke('set_config', { newConfig }).catch(() => {});
           }
         } else {
-          console.error('Open error:', e);
+          get().addToast('无法打开文件');
         }
       }
     },
@@ -586,7 +592,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         setSaveStatusWithReset('saved');
         await get().findBacklinks();
       } catch (e) {
-        console.error('Save error:', e);
+        get().addToast('保存失败');
         setSaveStatusWithReset('idle');
       }
     },
@@ -605,7 +611,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         const files = await invoke<FileEntry[]>('read_dir', { path: currentDir });
         set({ files });
       } catch (e) {
-        console.error('Refresh error:', e);
+        get().addToast('刷新文件列表失败');
       }
     },
 
@@ -639,7 +645,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         }
         await get().refreshFiles();
       } catch (e) {
-        console.error('Delete error:', e);
+        get().addToast('删除失败');
         throw e;
       }
     },
@@ -655,7 +661,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         }));
         await get().refreshFiles();
       } catch (e) {
-        console.error('Rename error:', e);
+        get().addToast('重命名失败');
         throw e;
       }
     },
@@ -862,6 +868,16 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         idx.files.set(f.full_path, f);
         idx.nameToPath.set(f.name.toLowerCase(), f.full_path);
       }
+    },
+
+    addToast: (message, type = 'error') => {
+      const id = `toast_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      set((s) => ({ toasts: [...s.toasts, { id, message, type }] }));
+      setTimeout(() => get().removeToast(id), 4000);
+    },
+
+    removeToast: (id) => {
+      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
     },
   };
 });

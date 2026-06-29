@@ -35,17 +35,27 @@ pub(super) fn print_to_pdf(
         ));
     }
 
-    // Edge exits before the file is fully flushed — brief settle
-    std::thread::sleep(Duration::from_millis(200));
-
-    // Verify the output file exists and has content
-    let meta = std::fs::metadata(output_path)
-        .map_err(|e| format!("PDF output file not found: {e}"))?;
-    if meta.len() < 10 {
-        return Err(format!(
-            "PDF file too small ({} bytes), Edge may have failed silently",
-            meta.len()
-        ));
+    // Poll until file size stabilises (Edge may still be flushing after exit)
+    let mut prev_len = 0u64;
+    let mut stable_count = 0u8;
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Ok(meta) = std::fs::metadata(output_path) {
+            let len = meta.len();
+            if len >= 10 && len == prev_len {
+                stable_count += 1;
+                if stable_count >= 2 {
+                    break; // stable for two consecutive polls
+                }
+            } else {
+                stable_count = 0;
+            }
+            prev_len = len;
+        }
+        if std::time::Instant::now() > deadline {
+            return Err("PDF export timed out waiting for file to stabilise".to_string());
+        }
+        std::thread::sleep(Duration::from_millis(50));
     }
 
     Ok(())

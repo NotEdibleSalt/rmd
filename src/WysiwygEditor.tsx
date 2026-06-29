@@ -230,7 +230,8 @@ export function WysiwygEditor() {
         key: new PluginKey('search'),
         state: {
           init() { return DecorationSet.empty; },
-          apply(tr) {
+          apply(tr, old) {
+            if (!tr.docChanged) return old;
             const { query, caseSensitive } = searchRef.current;
             if (!query) return DecorationSet.empty;
             const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
