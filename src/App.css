@@ -2320,6 +2320,158 @@ body {
   padding: 28px 20px;
 }
 
+/* ===== KaTeX Math Block ($$...$$) ===== */
+.math-block {
+  position: relative;
+  margin: 12px 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  transition: border-color 0.15s;
+  cursor: pointer;
+}
+.math-block:hover { border-color: var(--border-color); }
+.math-block[data-selected="true"] { border-color: var(--accent); }
+.math-block[data-editing="true"] {
+  border-color: var(--accent);
+  cursor: default;
+  padding: 12px;
+  background: var(--bg-secondary);
+}
+.math-block-render {
+  padding: 16px 12px;
+  overflow-x: auto;
+  text-align: center;
+}
+.math-block-render .katex-display { margin: 0; }
+.math-block-placeholder,
+.math-block-error {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.math-block-error { color: var(--danger, #e74c3c); }
+.math-block textarea.math-block-editor {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 60px;
+  padding: 8px 10px;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 13px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  resize: vertical;
+  outline: none;
+}
+.math-block textarea.math-block-editor:focus { border-color: var(--accent); }
+.math-block-edit-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  cursor: pointer;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.math-block:hover .math-block-edit-btn { opacity: 1; }
+.math-block-edit-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+.math-block-toolbar {
+  position: absolute;
+  top: 8px;
+  right: 40px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.math-block:hover .math-block-toolbar { opacity: 1; }
+.math-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.12s;
+}
+.math-toolbar-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* ===== KaTeX Math Inline ($...$) ===== */
+.math-inline {
+  display: inline;
+  cursor: pointer;
+  border-bottom: 1px dotted var(--border-color);
+  padding: 0 2px;
+  border-radius: 3px;
+  transition: background 0.12s;
+  white-space: nowrap;
+}
+.math-inline:hover { background: var(--accent-light); }
+.math-inline[data-selected="true"] {
+  background: var(--accent-light);
+  border-bottom-color: var(--accent);
+}
+.math-inline-render {
+  display: inline;
+  vertical-align: middle;
+}
+.math-inline-raw {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.math-inline-editing {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 1px 4px;
+  cursor: default;
+}
+.math-inline-prompt {
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 13px;
+  user-select: none;
+}
+.math-inline-input {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 13px;
+  min-width: 40px;
+  padding: 0;
+}
+.math-inline-preview {
+  display: inline;
+  margin-left: 4px;
+  opacity: 0.6;
+}
+
 /* ===== Backtick Selector (``` → code block / mermaid) ===== */
 
 .backtick-overlay {

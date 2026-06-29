@@ -882,6 +882,12 @@ export async function ensureImageSaveDir(): Promise<string | null> {
   const activeTab = state.tabs.find(t => t.id === state.activeTabId);
   if (activeTab?.imageSaveDir) return activeTab.imageSaveDir;
 
+  // Fall back to globally configured image_save_dir
+  if (state.config.image_save_dir) {
+    useEditorStore.getState().setImageSaveDir(state.config.image_save_dir);
+    return state.config.image_save_dir;
+  }
+
   if (_pendingDirPicker) return _pendingDirPicker;
 
   _pendingDirPicker = (async () => {

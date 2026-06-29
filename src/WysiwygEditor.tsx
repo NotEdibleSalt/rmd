@@ -32,6 +32,8 @@ import { ListAfterHardBreak } from './extensions/ListAfterHardBreak';
 import { HeadingAfterHardBreak } from './extensions/HeadingAfterHardBreak';
 import { BlockquoteAfterHardBreak } from './extensions/BlockquoteAfterHardBreak';
 import { HorizontalRuleAfterHardBreak } from './extensions/HorizontalRuleAfterHardBreak';
+import { MathBlock } from './extensions/MathBlock';
+import { MathInline } from './extensions/MathInline';
 import { WikiLinkAutocomplete } from './extensions/WikiLinkAutocomplete';
 import { ImageResizeView } from './extensions/ImageResizeView';
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -221,6 +223,8 @@ export function WysiwygEditor() {
       HeadingAfterHardBreak,
       BlockquoteAfterHardBreak,
       HorizontalRuleAfterHardBreak,
+      MathBlock,
+      MathInline,
       // ProseMirror plugin: highlight find-and-replace matches
       new Plugin({
         key: new PluginKey('search'),
