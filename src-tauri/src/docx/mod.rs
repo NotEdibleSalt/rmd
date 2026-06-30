@@ -1,3 +1,7 @@
+mod images;
+mod styles;
+mod footnotes;
+
 use comrak::nodes::{AstNode, NodeValue};
 use comrak::{parse_document, Arena, ComrakOptions};
 use crate::export::normalize_wikilink_target;
@@ -40,7 +44,7 @@ struct DocxWriter {
     images: Vec<(String, Vec<u8>)>,
     rel_id_counter: u32,
     footnote_defs: Vec<(u64, Vec<u8>)>, // (id, rendered content bytes)
-    heading_counters: [u32; 6], // heading numbering per level (index 0 = H1, 5 = H6)
+    heading_counters: [u32; 6],          // heading numbering per level (index 0 = H1, 5 = H6)
     theme: DocxTheme,
 }
 
@@ -70,271 +74,6 @@ impl DocxWriter {
             heading_counters: [0; 6],
             theme,
         }
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// OOXML boilerplate: [Content_Types].xml
-// ═══════════════════════════════════════════════════════════════════════
-
-impl DocxWriter {
-    fn write_content_types(&mut self) -> Result<(), String> {
-        let w = &mut self.content_types;
-        w.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
-            .map_err(|e| e.to_string())?;
-        w.write_event(Event::Start(BytesStart::new("Types")
-            .with_attributes([("xmlns", "http://schemas.openxmlformats.org/package/2006/content-types")])))
-            .map_err(|e| e.to_string())?;
-
-        // Default content types
-        for (ext, ct) in &[
-            ("rels", "application/vnd.openxmlformats-package.relationships+xml"),
-            ("xml", "application/xml"),
-            ("svg", "image/svg+xml"),
-        ] {
-            let mut elem = BytesStart::new("Default");
-            elem.push_attribute(("Extension", *ext));
-            elem.push_attribute(("ContentType", *ct));
-            w.write_event(Event::Empty(elem)).map_err(|e| e.to_string())?;
-        }
-
-        // Override content types
-        let mut overrides: Vec<(&str, &str)> = vec![
-            ("/word/document.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"),
-            ("/word/styles.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"),
-            ("/word/numbering.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"),
-            ("/docProps/core.xml", "application/vnd.openxmlformats-package.core-properties+xml"),
-            ("/docProps/app.xml", "application/vnd.openxmlformats-officedocument.extended-properties+xml"),
-        ];
-        if !self.footnote_defs.is_empty() {
-            overrides.push(("/word/footnotes.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"));
-        }
-        for (part, ct) in &overrides {
-            let mut elem = BytesStart::new("Override");
-            elem.push_attribute(("PartName", *part));
-            elem.push_attribute(("ContentType", *ct));
-            w.write_event(Event::Empty(elem)).map_err(|e| e.to_string())?;
-        }
-
-        w.write_event(Event::End(BytesEnd::new("Types")))
-            .map_err(|e| e.to_string())?;
-        Ok(())
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// OOXML boilerplate: word/_rels/document.xml.rels
-// ═══════════════════════════════════════════════════════════════════════
-
-impl DocxWriter {
-    /// Collect static word/document.xml relationship entries.
-    /// Called after footnotes are known (after collect_footnotes).
-    fn collect_rels(&mut self) -> Result<(), String> {
-        self.add_rel_entry("styles", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles", "styles.xml", None)?;
-        self.add_rel_entry("numbering", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering", "numbering.xml", None)?;
-        if !self.footnote_defs.is_empty() {
-            self.add_rel_entry("footnotes", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes", "footnotes.xml", None)?;
-        }
-        Ok(())
-    }
-
-    fn add_rel_entry(&mut self, _id_suffix: &str, rel_type: &str, target: &str, target_mode: Option<&str>) -> Result<(), String> {
-        self.rel_id_counter += 1;
-        let rid = format!("rId{}", self.rel_id_counter);
-        self.rels_entries.push(RelEntry {
-            id: rid,
-            rel_type: rel_type.to_string(),
-            target: target.to_string(),
-            target_mode: target_mode.map(|s| s.to_string()),
-        });
-        Ok(())
-    }
-
-    /// Write the complete word/_rels/document.xml.rels XML content.
-    fn render_rels_xml(&self) -> Result<Vec<u8>, String> {
-        let mut w = Writer::new_with_indent(Vec::new(), b' ', 2);
-        w.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
-            .map_err(|e| e.to_string())?;
-        w.write_event(Event::Start(BytesStart::new("Relationships")
-            .with_attributes([("xmlns", "http://schemas.openxmlformats.org/package/2006/relationships")])))
-            .map_err(|e| e.to_string())?;
-
-        for entry in &self.rels_entries {
-            let mut elem = BytesStart::new("Relationship");
-            elem.push_attribute(("Id", entry.id.as_str()));
-            elem.push_attribute(("Type", entry.rel_type.as_str()));
-            elem.push_attribute(("Target", entry.target.as_str()));
-            if let Some(ref mode) = entry.target_mode {
-                elem.push_attribute(("TargetMode", mode.as_str()));
-            }
-            w.write_event(Event::Empty(elem)).map_err(|e| e.to_string())?;
-        }
-
-        w.write_event(Event::End(BytesEnd::new("Relationships")))
-            .map_err(|e| e.to_string())?;
-        Ok(w.into_inner())
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// OOXML boilerplate: word/styles.xml
-// ═══════════════════════════════════════════════════════════════════════
-
-impl DocxWriter {
-    fn write_styles(&mut self) -> Result<(), String> {
-        self.styles.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
-            .map_err(|e| e.to_string())?;
-        self.styles.write_event(Event::Start(BytesStart::new("w:styles")
-            .with_attributes([("xmlns:w", "http://schemas.openxmlformats.org/wordprocessingml/2006/main")])))
-            .map_err(|e| e.to_string())?;
-
-        // Extract theme values to owned strings to avoid borrowing self in closures
-        let body_font = if self.theme.body_font.is_empty() { "Calibri".to_string() } else { self.theme.body_font.clone() };
-        let head_font = if self.theme.heading_font.is_empty() { "Calibri".to_string() } else { self.theme.heading_font.clone() };
-        let code_font = if self.theme.code_font.is_empty() { "Consolas".to_string() } else { self.theme.code_font.clone() };
-        let body_color = self.theme.body_color.clone();
-        let code_bg = if self.theme.code_bg.is_empty() { "F5F5F5".to_string() } else { self.theme.code_bg.clone() };
-        let code_color = if !self.theme.code_color.is_empty() { self.theme.code_color.clone() } else { body_color.clone() };
-
-        // Normal style
-        self.write_style("Normal", "Normal", "Para", true, |w| {
-            w.write_event(Event::Start(BytesStart::new("w:pPr"))).unwrap();
-            let mut spacing = BytesStart::new("w:spacing");
-            spacing.push_attribute(("w:line", "276")); // 1.15 line spacing (240 * 1.15)
-            spacing.push_attribute(("w:lineRule", "auto"));
-            w.write_event(Event::Empty(spacing)).unwrap();
-            w.write_event(Event::End(BytesEnd::new("w:pPr"))).unwrap();
-            w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
-            write_rfont(w, &body_font);
-            write_sz(w, 22); // 11pt * 2
-            if !body_color.is_empty() {
-                let mut col_elem = BytesStart::new("w:color");
-                col_elem.push_attribute(("w:val", body_color.as_str()));
-                w.write_event(Event::Empty(col_elem)).unwrap();
-            }
-            w.write_event(Event::End(BytesEnd::new("w:rPr"))).unwrap();
-        })?;
-
-        // Heading 1-6 styles — keep structural data, apply theme font/color
-        let headings: [(&str, &str, u16, &str); 6] = [
-            ("Heading1", "heading 1", 48, "true"),
-            ("Heading2", "heading 2", 36, "true"),
-            ("Heading3", "heading 3", 28, "true"),
-            ("Heading4", "heading 4", 24, "false"),
-            ("Heading5", "heading 5", 22, "true"),
-            ("Heading6", "heading 6", 20, "true"),
-        ];
-        for (style_id, name, sz, bold) in &headings {
-            self.write_style(style_id, name, "Para", false, |w| {
-                w.write_event(Event::Start(BytesStart::new("w:pPr"))).unwrap();
-                let mut spacing = BytesStart::new("w:spacing");
-                spacing.push_attribute(("w:before", "240")); // 12pt before
-                spacing.push_attribute(("w:after", "120"));  // 6pt after
-                w.write_event(Event::Empty(spacing)).unwrap();
-                w.write_event(Event::End(BytesEnd::new("w:pPr"))).unwrap();
-                w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
-                write_rfont(w, &head_font);
-                if *bold == "true" {
-                    w.write_event(Event::Empty(BytesStart::new("w:b"))).unwrap();
-                }
-                if *style_id == "Heading4" {
-                    w.write_event(Event::Empty(BytesStart::new("w:i"))).unwrap();
-                }
-                if !body_color.is_empty() {
-                    let mut col_elem = BytesStart::new("w:color");
-                    col_elem.push_attribute(("w:val", body_color.as_str()));
-                    w.write_event(Event::Empty(col_elem)).unwrap();
-                }
-                write_sz(w, *sz);
-                w.write_event(Event::End(BytesEnd::new("w:rPr"))).unwrap();
-            })?;
-        }
-
-        // Code paragraph style
-        self.write_style("Code", "Code", "Para", false, |w| {
-            w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
-            write_rfont(w, &code_font);
-            write_sz(w, 19);
-            if !code_color.is_empty() {
-                let mut col = BytesStart::new("w:color");
-                col.push_attribute(("w:val", code_color.as_str()));
-                w.write_event(Event::Empty(col)).unwrap();
-            }
-            let mut shd = BytesStart::new("w:shd");
-            shd.push_attribute(("w:val", "clear"));
-            shd.push_attribute(("w:fill", code_bg.as_str()));
-            w.write_event(Event::Empty(shd)).unwrap();
-            w.write_event(Event::End(BytesEnd::new("w:rPr"))).unwrap();
-        })?;
-
-        // Code character style (for inline code)
-        self.write_style("CodeLang", "CodeLang", "Char", false, |w| {
-            w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
-            write_rfont(w, &code_font);
-            write_sz(w, 19);
-            if !code_color.is_empty() {
-                let mut col = BytesStart::new("w:color");
-                col.push_attribute(("w:val", code_color.as_str()));
-                w.write_event(Event::Empty(col)).unwrap();
-            }
-            let mut shd = BytesStart::new("w:shd");
-            shd.push_attribute(("w:val", "clear"));
-            shd.push_attribute(("w:fill", code_bg.as_str()));
-            w.write_event(Event::Empty(shd)).unwrap();
-            w.write_event(Event::End(BytesEnd::new("w:rPr"))).unwrap();
-        })?;
-
-        // ListParagraph style
-        self.write_style("ListParagraph", "List Paragraph", "Para", false, |w| {
-            w.write_event(Event::Start(BytesStart::new("w:pPr"))).unwrap();
-            let mut ind = BytesStart::new("w:ind");
-            ind.push_attribute(("w:left", "720"));
-            w.write_event(Event::Empty(ind)).unwrap();
-            w.write_event(Event::End(BytesEnd::new("w:pPr"))).unwrap();
-            w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
-            write_rfont(w, &body_font);
-            write_sz(w, 22);
-            w.write_event(Event::End(BytesEnd::new("w:rPr"))).unwrap();
-        })?;
-
-        // Quote style
-        self.write_style("Quote", "Quote", "Para", false, |w| {
-            w.write_event(Event::Start(BytesStart::new("w:pPr"))).unwrap();
-            let mut ind = BytesStart::new("w:ind");
-            ind.push_attribute(("w:left", "720"));
-            w.write_event(Event::Empty(ind)).unwrap();
-            w.write_event(Event::End(BytesEnd::new("w:pPr"))).unwrap();
-            w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
-            write_rfont(w, &body_font);
-            write_sz(w, 22);
-            w.write_event(Event::Empty(BytesStart::new("w:i"))).unwrap();
-            w.write_event(Event::End(BytesEnd::new("w:rPr"))).unwrap();
-        })?;
-
-        self.styles.write_event(Event::End(BytesEnd::new("w:styles")))
-            .map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
-    fn write_style<F>(&mut self, id: &str, name: &str, stype: &str, is_default: bool, f: F) -> Result<(), String>
-    where F: Fn(&mut Writer<Vec<u8>>) {
-        let w = &mut self.styles;
-        let mut style = BytesStart::new("w:style");
-        style.push_attribute(("w:styleId", id));
-        style.push_attribute(("w:type", stype));
-        if is_default {
-            style.push_attribute(("w:default", "1"));
-        }
-        w.write_event(Event::Start(style)).map_err(|e| e.to_string())?;
-
-        let mut name_elem = BytesStart::new("w:name");
-        name_elem.push_attribute(("w:val", name));
-        w.write_event(Event::Empty(name_elem)).map_err(|e| e.to_string())?;
-
-        f(w);
-
-        w.write_event(Event::End(BytesEnd::new("w:style"))).map_err(|e| e.to_string())?;
-        Ok(())
     }
 }
 
@@ -389,22 +128,35 @@ impl DocxWriter {
         self.write_styles()?;
 
         // Begin document.xml
-        self.document.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
+        self.document
+            .write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
             .map_err(|e| e.to_string())?;
-        self.document.write_event(Event::Start(BytesStart::new("w:document")
-            .with_attributes([("xmlns:w", "http://schemas.openxmlformats.org/wordprocessingml/2006/main")])
-            .with_attributes([("xmlns:r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships")])))
+        self.document
+            .write_event(Event::Start(
+                BytesStart::new("w:document")
+                    .with_attributes([(
+                        "xmlns:w",
+                        "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                    )])
+                    .with_attributes([(
+                        "xmlns:r",
+                        "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+                    )]),
+            ))
             .map_err(|e| e.to_string())?;
-        self.document.write_event(Event::Start(BytesStart::new("w:body")))
+        self.document
+            .write_event(Event::Start(BytesStart::new("w:body")))
             .map_err(|e| e.to_string())?;
 
         // Second pass: traverse AST and write document content
         self.walk_ast(root, base_path);
 
         // Close document.xml body
-        self.document.write_event(Event::End(BytesEnd::new("w:body")))
+        self.document
+            .write_event(Event::End(BytesEnd::new("w:body")))
             .map_err(|e| e.to_string())?;
-        self.document.write_event(Event::End(BytesEnd::new("w:document")))
+        self.document
+            .write_event(Event::End(BytesEnd::new("w:document")))
             .map_err(|e| e.to_string())?;
 
         // Write footnotes if any (after boilerplate writers are done)
@@ -431,10 +183,16 @@ impl DocxWriter {
                 // Build number prefix (e.g. "1.2.3")
                 let mut num_str = String::new();
                 for (i, c) in self.heading_counters.iter().enumerate() {
-                    if *c == 0 { break; }
-                    if !num_str.is_empty() { num_str.push('.'); }
+                    if *c == 0 {
+                        break;
+                    }
+                    if !num_str.is_empty() {
+                        num_str.push('.');
+                    }
                     num_str.push_str(&c.to_string());
-                    if i == idx { break; }
+                    if i == idx {
+                        break;
+                    }
                 }
                 let prefix = format!("{}  ", num_str);
 
@@ -514,7 +272,8 @@ impl DocxWriter {
                     // Write content (comrak strips task markers from text)
                     for grandchild in child.children() {
                         // Flatten Paragraph nodes — list item already opened <w:p>
-                        let is_para = matches!(grandchild.data.borrow().value, NodeValue::Paragraph);
+                        let is_para =
+                            matches!(grandchild.data.borrow().value, NodeValue::Paragraph);
                         if is_para {
                             for text_child in grandchild.children() {
                                 if let NodeValue::Text(ref t) = text_child.data.borrow().value {
@@ -625,7 +384,9 @@ impl DocxWriter {
                                     }
                                 }
                                 self.write_run_end();
-                            } else if let NodeValue::DescriptionDetails = desc_child.data.borrow().value {
+                            } else if let NodeValue::DescriptionDetails =
+                                desc_child.data.borrow().value
+                            {
                                 for t in desc_child.children() {
                                     self.walk_ast(t, base_path);
                                 }
@@ -643,7 +404,6 @@ impl DocxWriter {
             }
         }
     }
-
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -655,7 +415,8 @@ impl DocxWriter {
         let w = &mut self.document;
         w.write_event(Event::Start(BytesStart::new("w:p"))).unwrap();
         if style_id.is_some() || align.is_some() {
-            w.write_event(Event::Start(BytesStart::new("w:pPr"))).unwrap();
+            w.write_event(Event::Start(BytesStart::new("w:pPr")))
+                .unwrap();
             if let Some(sid) = style_id {
                 let mut p_style = BytesStart::new("w:pStyle");
                 p_style.push_attribute(("w:val", sid));
@@ -671,32 +432,57 @@ impl DocxWriter {
     }
 
     fn write_paragraph_end(&mut self) {
-        self.document.write_event(Event::End(BytesEnd::new("w:p"))).unwrap();
+        self.document
+            .write_event(Event::End(BytesEnd::new("w:p")))
+            .unwrap();
     }
 
-    fn write_run_start(&mut self, bold: bool, italic: bool, strike: bool, superscript: bool, _description: bool) {
+    fn write_run_start(
+        &mut self,
+        bold: bool,
+        italic: bool,
+        strike: bool,
+        superscript: bool,
+        _description: bool,
+    ) {
         let w = &mut self.document;
         w.write_event(Event::Start(BytesStart::new("w:r"))).unwrap();
         if bold || italic || strike || superscript {
-            w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
-            if bold { w.write_event(Event::Empty(BytesStart::new("w:b"))).unwrap(); }
-            if italic { w.write_event(Event::Empty(BytesStart::new("w:i"))).unwrap(); }
+            w.write_event(Event::Start(BytesStart::new("w:rPr")))
+                .unwrap();
+            if bold {
+                w.write_event(Event::Empty(BytesStart::new("w:b")))
+                    .unwrap();
+            }
+            if italic {
+                w.write_event(Event::Empty(BytesStart::new("w:i")))
+                    .unwrap();
+            }
             if strike {
-                w.write_event(Event::Empty(BytesStart::new("w:strike"))).unwrap();
+                w.write_event(Event::Empty(BytesStart::new("w:strike")))
+                    .unwrap();
             }
             if superscript {
-                w.write_event(Event::Empty(BytesStart::new("w:vertAlign").with_attributes([("w:val", "superscript")]))).unwrap();
+                w.write_event(Event::Empty(
+                    BytesStart::new("w:vertAlign")
+                        .with_attributes([("w:val", "superscript")]),
+                ))
+                .unwrap();
             }
             w.write_event(Event::End(BytesEnd::new("w:rPr"))).unwrap();
         }
     }
 
     fn write_run_end(&mut self) {
-        self.document.write_event(Event::End(BytesEnd::new("w:r"))).unwrap();
+        self.document
+            .write_event(Event::End(BytesEnd::new("w:r")))
+            .unwrap();
     }
 
     fn write_text_run(&mut self, text: &str) {
-        if text.is_empty() { return; }
+        if text.is_empty() {
+            return;
+        }
         let w = &mut self.document;
         w.write_event(Event::Start(BytesStart::new("w:r"))).unwrap();
         w.write_event(Event::Start(BytesStart::new("w:t"))).unwrap();
@@ -711,7 +497,8 @@ impl DocxWriter {
         let code_color = self.code_color_fallback();
         let w = &mut self.document;
         w.write_event(Event::Start(BytesStart::new("w:r"))).unwrap();
-        w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
+        w.write_event(Event::Start(BytesStart::new("w:rPr")))
+            .unwrap();
         write_rfont(w, &code_font);
         if !code_color.is_empty() {
             let mut col = BytesStart::new("w:color");
@@ -740,8 +527,10 @@ impl DocxWriter {
     fn write_thematic_break(&mut self) {
         let w = &mut self.document;
         w.write_event(Event::Start(BytesStart::new("w:p"))).unwrap();
-        w.write_event(Event::Start(BytesStart::new("w:pPr"))).unwrap();
-        w.write_event(Event::Start(BytesStart::new("w:pBdr"))).unwrap();
+        w.write_event(Event::Start(BytesStart::new("w:pPr")))
+            .unwrap();
+        w.write_event(Event::Start(BytesStart::new("w:pBdr")))
+            .unwrap();
         let mut bottom = BytesStart::new("w:bottom");
         bottom.push_attribute(("w:val", "single"));
         bottom.push_attribute(("w:sz", "6"));
@@ -754,11 +543,19 @@ impl DocxWriter {
     }
 
     fn code_font_fallback(&self) -> String {
-        if self.theme.code_font.is_empty() { "Consolas".to_string() } else { self.theme.code_font.clone() }
+        if self.theme.code_font.is_empty() {
+            "Consolas".to_string()
+        } else {
+            self.theme.code_font.clone()
+        }
     }
 
     fn code_bg_fallback(&self) -> String {
-        if self.theme.code_bg.is_empty() { "F5F5F5".to_string() } else { self.theme.code_bg.clone() }
+        if self.theme.code_bg.is_empty() {
+            "F5F5F5".to_string()
+        } else {
+            self.theme.code_bg.clone()
+        }
     }
 
     fn code_color_fallback(&self) -> String {
@@ -782,17 +579,20 @@ impl DocxWriter {
         // Language label line (if present)
         if !lang.is_empty() {
             w.write_event(Event::Start(BytesStart::new("w:p"))).unwrap();
-            w.write_event(Event::Start(BytesStart::new("w:pPr"))).unwrap();
+            w.write_event(Event::Start(BytesStart::new("w:pPr")))
+                .unwrap();
             w.write_event(Event::End(BytesEnd::new("w:pPr"))).unwrap();
 
             // lang label run — smaller, muted, italic
             w.write_event(Event::Start(BytesStart::new("w:r"))).unwrap();
-            w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
+            w.write_event(Event::Start(BytesStart::new("w:rPr")))
+                .unwrap();
             write_rfont(w, &code_font);
             let mut color = BytesStart::new("w:color");
             color.push_attribute(("w:val", "888888"));
             w.write_event(Event::Empty(color)).unwrap();
-            w.write_event(Event::Empty(BytesStart::new("w:i"))).unwrap();
+            w.write_event(Event::Empty(BytesStart::new("w:i")))
+                .unwrap();
             write_sz(w, 16); // 8pt
             w.write_event(Event::End(BytesEnd::new("w:rPr"))).unwrap();
             w.write_event(Event::Start(BytesStart::new("w:t"))).unwrap();
@@ -805,18 +605,18 @@ impl DocxWriter {
 
         // Code content block — each line in its own run with a line break between
         w.write_event(Event::Start(BytesStart::new("w:p"))).unwrap();
-        let p_pr = BytesStart::new("w:pPr");
-        let p_style = BytesStart::new("w:pStyle");
-        let mut p_style = p_style;
+        let mut p_style = BytesStart::new("w:pStyle");
         p_style.push_attribute(("w:val", "Code"));
-        w.write_event(Event::Start(p_pr)).unwrap();
+        w.write_event(Event::Start(BytesStart::new("w:pPr")))
+            .unwrap();
         w.write_event(Event::Empty(p_style)).unwrap();
         w.write_event(Event::End(BytesEnd::new("w:pPr"))).unwrap();
 
         let lines: Vec<&str> = code.lines().collect();
         for (i, line) in lines.iter().enumerate() {
             w.write_event(Event::Start(BytesStart::new("w:r"))).unwrap();
-            w.write_event(Event::Start(BytesStart::new("w:rPr"))).unwrap();
+            w.write_event(Event::Start(BytesStart::new("w:rPr")))
+                .unwrap();
             write_rfont(w, &code_font);
             if !code_color.is_empty() {
                 let mut col = BytesStart::new("w:color");
@@ -853,20 +653,26 @@ impl DocxWriter {
         // Register relationship
         self.rels_entries.push(RelEntry {
             id: rid.clone(),
-            rel_type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink".to_string(),
+            rel_type:
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+                    .to_string(),
             target: url.to_string(),
             target_mode: Some("External".to_string()),
         });
 
         let mut hyperlink = BytesStart::new("w:hyperlink");
         hyperlink.push_attribute(("r:id", rid.as_str()));
-        self.document.write_event(Event::Start(hyperlink)).unwrap();
+        self.document
+            .write_event(Event::Start(hyperlink))
+            .unwrap();
 
         for child in node.children() {
             self.walk_ast(child, base_path);
         }
 
-        self.document.write_event(Event::End(BytesEnd::new("w:hyperlink"))).unwrap();
+        self.document
+            .write_event(Event::End(BytesEnd::new("w:hyperlink")))
+            .unwrap();
     }
 }
 
@@ -876,15 +682,23 @@ impl DocxWriter {
 
 impl DocxWriter {
     fn write_table<'a>(&mut self, node: &'a AstNode<'a>, base_path: &str) {
-        self.document.write_event(Event::Start(BytesStart::new("w:tbl"))).unwrap();
+        self.document
+            .write_event(Event::Start(BytesStart::new("w:tbl")))
+            .unwrap();
 
         // Count columns from first row
-        let col_count = node.children().next()
+        let col_count = node
+            .children()
+            .next()
             .and_then(|row| match &row.data.borrow().value {
                 NodeValue::TableRow(_) => {
                     let n = row.children().count();
-                    if n > 0 { Some(n) } else { None }
-                },
+                    if n > 0 {
+                        Some(n)
+                    } else {
+                        None
+                    }
+                }
                 _ => None,
             })
             .unwrap_or(1);
@@ -896,7 +710,9 @@ impl DocxWriter {
         let page_w_str = PAGE_TEXT_WIDTH.to_string();
 
         // Table properties
-        self.document.write_event(Event::Start(BytesStart::new("w:tblPr"))).unwrap();
+        self.document
+            .write_event(Event::Start(BytesStart::new("w:tblPr")))
+            .unwrap();
         // Full-page table width
         let mut tblw = BytesStart::new("w:tblW");
         tblw.push_attribute(("w:w", page_w_str.as_str()));
@@ -907,7 +723,9 @@ impl DocxWriter {
         tbl_jc.push_attribute(("w:val", "center"));
         self.document.write_event(Event::Empty(tbl_jc)).unwrap();
         // Borders
-        self.document.write_event(Event::Start(BytesStart::new("w:tblBorders"))).unwrap();
+        self.document
+            .write_event(Event::Start(BytesStart::new("w:tblBorders")))
+            .unwrap();
         for side in &["top", "left", "bottom", "right", "insideH", "insideV"] {
             let side_name = format!("w:{}", side);
             let mut border = BytesStart::new(&side_name);
@@ -916,51 +734,79 @@ impl DocxWriter {
             border.push_attribute(("w:color", "auto"));
             self.document.write_event(Event::Empty(border)).unwrap();
         }
-        self.document.write_event(Event::End(BytesEnd::new("w:tblBorders"))).unwrap();
-        self.document.write_event(Event::End(BytesEnd::new("w:tblPr"))).unwrap();
+        self.document
+            .write_event(Event::End(BytesEnd::new("w:tblBorders")))
+            .unwrap();
+        self.document
+            .write_event(Event::End(BytesEnd::new("w:tblPr")))
+            .unwrap();
 
         // Table grid (column definitions)
-        self.document.write_event(Event::Start(BytesStart::new("w:tblGrid"))).unwrap();
+        self.document
+            .write_event(Event::Start(BytesStart::new("w:tblGrid")))
+            .unwrap();
         for _ in 0..col_count {
             let mut gc = BytesStart::new("w:gridCol");
             gc.push_attribute(("w:w", col_width_str.as_str()));
             self.document.write_event(Event::Empty(gc)).unwrap();
         }
-        self.document.write_event(Event::End(BytesEnd::new("w:tblGrid"))).unwrap();
+        self.document
+            .write_event(Event::End(BytesEnd::new("w:tblGrid")))
+            .unwrap();
 
         // Rows
         for child in node.children() {
             match &child.data.borrow().value {
                 NodeValue::TableRow(_) => {
-                    self.document.write_event(Event::Start(BytesStart::new("w:tr"))).unwrap();
+                    self.document
+                        .write_event(Event::Start(BytesStart::new("w:tr")))
+                        .unwrap();
                     for cell in child.children() {
-                        self.document.write_event(Event::Start(BytesStart::new("w:tc"))).unwrap();
+                        self.document
+                            .write_event(Event::Start(BytesStart::new("w:tc")))
+                            .unwrap();
                         // Cell width matching column width
                         let mut tcw = BytesStart::new("w:tcW");
                         tcw.push_attribute(("w:w", col_width_str.as_str()));
                         tcw.push_attribute(("w:type", "dxa"));
                         self.document.write_event(Event::Empty(tcw)).unwrap();
 
-                        self.document.write_event(Event::Start(BytesStart::new("w:p"))).unwrap();
+                        self.document
+                            .write_event(Event::Start(BytesStart::new("w:p")))
+                            .unwrap();
                         // Center cell content horizontally
-                        self.document.write_event(Event::Start(BytesStart::new("w:pPr"))).unwrap();
+                        self.document
+                            .write_event(Event::Start(BytesStart::new("w:pPr")))
+                            .unwrap();
                         let mut cell_jc = BytesStart::new("w:jc");
                         cell_jc.push_attribute(("w:val", "center"));
-                        self.document.write_event(Event::Empty(cell_jc)).unwrap();
-                        self.document.write_event(Event::End(BytesEnd::new("w:pPr"))).unwrap();
+                        self.document
+                            .write_event(Event::Empty(cell_jc))
+                            .unwrap();
+                        self.document
+                            .write_event(Event::End(BytesEnd::new("w:pPr")))
+                            .unwrap();
                         for cell_child in cell.children() {
                             self.walk_ast(cell_child, base_path);
                         }
-                        self.document.write_event(Event::End(BytesEnd::new("w:p"))).unwrap();
-                        self.document.write_event(Event::End(BytesEnd::new("w:tc"))).unwrap();
+                        self.document
+                            .write_event(Event::End(BytesEnd::new("w:p")))
+                            .unwrap();
+                        self.document
+                            .write_event(Event::End(BytesEnd::new("w:tc")))
+                            .unwrap();
                     }
-                    self.document.write_event(Event::End(BytesEnd::new("w:tr"))).unwrap();
+                    self.document
+                        .write_event(Event::End(BytesEnd::new("w:tr")))
+                        .unwrap();
                 }
                 _ => {}
             }
         }
 
-        self.document.write_event(Event::End(BytesEnd::new("w:tbl"))).unwrap();
+        self.document
+            .write_event(Event::End(BytesEnd::new("w:tbl")))
+            .unwrap();
     }
 }
 
@@ -970,20 +816,32 @@ impl DocxWriter {
 
 impl DocxWriter {
     fn write_list_item(&mut self, ordered: bool, _start: u64, checked: bool, is_task: bool) {
-        self.document.write_event(Event::Start(BytesStart::new("w:p"))).unwrap();
-        self.document.write_event(Event::Start(BytesStart::new("w:pPr"))).unwrap();
+        self.document
+            .write_event(Event::Start(BytesStart::new("w:p")))
+            .unwrap();
+        self.document
+            .write_event(Event::Start(BytesStart::new("w:pPr")))
+            .unwrap();
 
         let num_id = if ordered { 1u32 } else { 2u32 };
-        self.document.write_event(Event::Start(BytesStart::new("w:numPr"))).unwrap();
+        self.document
+            .write_event(Event::Start(BytesStart::new("w:numPr")))
+            .unwrap();
         let mut ilvl = BytesStart::new("w:ilvl");
         ilvl.push_attribute(("w:val", "0"));
         self.document.write_event(Event::Empty(ilvl)).unwrap();
         let mut num_id_elem = BytesStart::new("w:numId");
         num_id_elem.push_attribute(("w:val", num_id.to_string().as_str()));
-        self.document.write_event(Event::Empty(num_id_elem)).unwrap();
-        self.document.write_event(Event::End(BytesEnd::new("w:numPr"))).unwrap();
+        self.document
+            .write_event(Event::Empty(num_id_elem))
+            .unwrap();
+        self.document
+            .write_event(Event::End(BytesEnd::new("w:numPr")))
+            .unwrap();
 
-        self.document.write_event(Event::End(BytesEnd::new("w:pPr"))).unwrap();
+        self.document
+            .write_event(Event::End(BytesEnd::new("w:pPr")))
+            .unwrap();
 
         if checked {
             self.write_text_run("☑ ");
@@ -993,10 +851,16 @@ impl DocxWriter {
     }
 
     fn write_numbering(&mut self) -> Result<(), String> {
-        self.numbering.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
+        self.numbering
+            .write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
             .map_err(|e| e.to_string())?;
-        self.numbering.write_event(Event::Start(BytesStart::new("w:numbering")
-            .with_attributes([("xmlns:w", "http://schemas.openxmlformats.org/wordprocessingml/2006/main")])))
+        self.numbering
+            .write_event(Event::Start(
+                BytesStart::new("w:numbering").with_attributes([(
+                    "xmlns:w",
+                    "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                )]),
+            ))
             .map_err(|e| e.to_string())?;
 
         // Abstract numbering 1: ordered (decimal)
@@ -1008,7 +872,8 @@ impl DocxWriter {
         self.write_num_instance(1, 1)?;
         self.write_num_instance(2, 2)?;
 
-        self.numbering.write_event(Event::End(BytesEnd::new("w:numbering")))
+        self.numbering
+            .write_event(Event::End(BytesEnd::new("w:numbering")))
             .map_err(|e| e.to_string())?;
         Ok(())
     }
@@ -1020,22 +885,33 @@ impl DocxWriter {
         w.write_event(Event::Start(abs)).map_err(|e| e.to_string())?;
 
         // Level 0
-        w.write_event(Event::Start(BytesStart::new("w:lvl").with_attributes([("w:ilvl", "0")]))).map_err(|e| e.to_string())?;
+        w.write_event(Event::Start(
+            BytesStart::new("w:lvl").with_attributes([("w:ilvl", "0")]),
+        ))
+        .map_err(|e| e.to_string())?;
         let mut start = BytesStart::new("w:start");
         start.push_attribute(("w:val", "1"));
         w.write_event(Event::Empty(start)).map_err(|e| e.to_string())?;
         let mut numfmt = BytesStart::new("w:numFmt");
         numfmt.push_attribute(("w:val", fmt));
-        w.write_event(Event::Empty(numfmt)).map_err(|e| e.to_string())?;
+        w.write_event(Event::Empty(numfmt))
+            .map_err(|e| e.to_string())?;
         let mut lvl_text = BytesStart::new("w:lvlText");
-        lvl_text.push_attribute(("w:val", if fmt == "bullet" { "\u{2022}" } else { "%1" }));
-        w.write_event(Event::Empty(lvl_text)).map_err(|e| e.to_string())?;
+        lvl_text.push_attribute((
+            "w:val",
+            if fmt == "bullet" { "\u{2022}" } else { "%1" },
+        ));
+        w.write_event(Event::Empty(lvl_text))
+            .map_err(|e| e.to_string())?;
         let mut lvl_jc = BytesStart::new("w:lvlJc");
         lvl_jc.push_attribute(("w:val", "left"));
-        w.write_event(Event::Empty(lvl_jc)).map_err(|e| e.to_string())?;
-        w.write_event(Event::End(BytesEnd::new("w:lvl"))).map_err(|e| e.to_string())?;
+        w.write_event(Event::Empty(lvl_jc))
+            .map_err(|e| e.to_string())?;
+        w.write_event(Event::End(BytesEnd::new("w:lvl")))
+            .map_err(|e| e.to_string())?;
 
-        w.write_event(Event::End(BytesEnd::new("w:abstractNum"))).map_err(|e| e.to_string())?;
+        w.write_event(Event::End(BytesEnd::new("w:abstractNum")))
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -1046,9 +922,167 @@ impl DocxWriter {
         w.write_event(Event::Start(num)).map_err(|e| e.to_string())?;
         let mut abs_ref = BytesStart::new("w:abstractNumId");
         abs_ref.push_attribute(("w:val", abstract_id.to_string().as_str()));
-        w.write_event(Event::Empty(abs_ref)).map_err(|e| e.to_string())?;
-        w.write_event(Event::End(BytesEnd::new("w:num"))).map_err(|e| e.to_string())?;
+        w.write_event(Event::Empty(abs_ref))
+            .map_err(|e| e.to_string())?;
+        w.write_event(Event::End(BytesEnd::new("w:num")))
+            .map_err(|e| e.to_string())?;
         Ok(())
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// OOXML boilerplate: [Content_Types].xml
+// ═══════════════════════════════════════════════════════════════════════
+
+impl DocxWriter {
+    fn write_content_types(&mut self) -> Result<(), String> {
+        let w = &mut self.content_types;
+        w.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
+            .map_err(|e| e.to_string())?;
+        w.write_event(Event::Start(
+            BytesStart::new("Types").with_attributes([(
+                "xmlns",
+                "http://schemas.openxmlformats.org/package/2006/content-types",
+            )]),
+        ))
+        .map_err(|e| e.to_string())?;
+
+        // Default content types
+        for (ext, ct) in &[
+            (
+                "rels",
+                "application/vnd.openxmlformats-package.relationships+xml",
+            ),
+            ("xml", "application/xml"),
+            ("svg", "image/svg+xml"),
+        ] {
+            let mut elem = BytesStart::new("Default");
+            elem.push_attribute(("Extension", *ext));
+            elem.push_attribute(("ContentType", *ct));
+            w.write_event(Event::Empty(elem))
+                .map_err(|e| e.to_string())?;
+        }
+
+        // Override content types
+        let mut overrides: Vec<(&str, &str)> = vec![
+            (
+                "/word/document.xml",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+            ),
+            (
+                "/word/styles.xml",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml",
+            ),
+            (
+                "/word/numbering.xml",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
+            ),
+            (
+                "/docProps/core.xml",
+                "application/vnd.openxmlformats-package.core-properties+xml",
+            ),
+            (
+                "/docProps/app.xml",
+                "application/vnd.openxmlformats-officedocument.extended-properties+xml",
+            ),
+        ];
+        if !self.footnote_defs.is_empty() {
+            overrides.push((
+                "/word/footnotes.xml",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
+            ));
+        }
+        for (part, ct) in &overrides {
+            let mut elem = BytesStart::new("Override");
+            elem.push_attribute(("PartName", *part));
+            elem.push_attribute(("ContentType", *ct));
+            w.write_event(Event::Empty(elem))
+                .map_err(|e| e.to_string())?;
+        }
+
+        w.write_event(Event::End(BytesEnd::new("Types")))
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// OOXML boilerplate: word/_rels/document.xml.rels
+// ═══════════════════════════════════════════════════════════════════════
+
+impl DocxWriter {
+    /// Collect static word/document.xml relationship entries.
+    /// Called after footnotes are known (after collect_footnotes).
+    fn collect_rels(&mut self) -> Result<(), String> {
+        self.add_rel_entry(
+            "styles",
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles",
+            "styles.xml",
+            None,
+        )?;
+        self.add_rel_entry(
+            "numbering",
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
+            "numbering.xml",
+            None,
+        )?;
+        if !self.footnote_defs.is_empty() {
+            self.add_rel_entry(
+                "footnotes",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes",
+                "footnotes.xml",
+                None,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn add_rel_entry(
+        &mut self,
+        _id_suffix: &str,
+        rel_type: &str,
+        target: &str,
+        target_mode: Option<&str>,
+    ) -> Result<(), String> {
+        self.rel_id_counter += 1;
+        let rid = format!("rId{}", self.rel_id_counter);
+        self.rels_entries.push(RelEntry {
+            id: rid,
+            rel_type: rel_type.to_string(),
+            target: target.to_string(),
+            target_mode: target_mode.map(|s| s.to_string()),
+        });
+        Ok(())
+    }
+
+    /// Write the complete word/_rels/document.xml.rels XML content.
+    fn render_rels_xml(&self) -> Result<Vec<u8>, String> {
+        let mut w = Writer::new_with_indent(Vec::new(), b' ', 2);
+        w.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
+            .map_err(|e| e.to_string())?;
+        w.write_event(Event::Start(
+            BytesStart::new("Relationships").with_attributes([(
+                "xmlns",
+                "http://schemas.openxmlformats.org/package/2006/relationships",
+            )]),
+        ))
+        .map_err(|e| e.to_string())?;
+
+        for entry in &self.rels_entries {
+            let mut elem = BytesStart::new("Relationship");
+            elem.push_attribute(("Id", entry.id.as_str()));
+            elem.push_attribute(("Type", entry.rel_type.as_str()));
+            elem.push_attribute(("Target", entry.target.as_str()));
+            if let Some(ref mode) = entry.target_mode {
+                elem.push_attribute(("TargetMode", mode.as_str()));
+            }
+            w.write_event(Event::Empty(elem))
+                .map_err(|e| e.to_string())?;
+        }
+
+        w.write_event(Event::End(BytesEnd::new("Relationships")))
+            .map_err(|e| e.to_string())?;
+        Ok(w.into_inner())
     }
 }
 
@@ -1064,8 +1098,8 @@ impl DocxWriter {
         let mut buf = Vec::new();
         let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
 
-        let options: FileOptions<'_, ()> = FileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated);
+        let options: FileOptions<'_, ()> =
+            FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
         // [Content_Types].xml
         zip.start_file("[Content_Types].xml", options)
@@ -1078,32 +1112,44 @@ impl DocxWriter {
             .map_err(|e| e.to_string())?;
         zip.start_file("_rels/.rels", options)
             .map_err(|e| e.to_string())?;
-        write!(zip, r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        write!(
+            zip,
+            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
   <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/extended-properties" Target="docProps/app.xml"/>
-</Relationships>"#).map_err(|e| e.to_string())?;
+</Relationships>"#,
+        )
+        .map_err(|e| e.to_string())?;
 
         // docProps
         zip.add_directory("docProps/", FileOptions::<'_, ()>::default())
             .map_err(|e| e.to_string())?;
         zip.start_file("docProps/app.xml", options)
             .map_err(|e| e.to_string())?;
-        write!(zip, r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        write!(
+            zip,
+            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">
 <Application>RMD</Application>
-</Properties>"#).map_err(|e| e.to_string())?;
+</Properties>"#,
+        )
+        .map_err(|e| e.to_string())?;
 
         zip.start_file("docProps/core.xml", options)
             .map_err(|e| e.to_string())?;
-        write!(zip, r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        write!(
+            zip,
+            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
     xmlns:dc="http://purl.org/dc/elements/1.1/"
     xmlns:dcterms="http://purl.org/dc/terms/">
 <dc:creator>RMD</dc:creator>
 <dc:title>RMD Document</dc:title>
-</cp:coreProperties>"#).map_err(|e| e.to_string())?;
+</cp:coreProperties>"#,
+        )
+        .map_err(|e| e.to_string())?;
 
         // word/
         zip.add_directory("word/", FileOptions::<'_, ()>::default())
@@ -1160,406 +1206,13 @@ impl DocxWriter {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Image helpers
-// ═══════════════════════════════════════════════════════════════════════
-
-/// Parse (width, height) in pixels from decoded image bytes.
-/// Supports PNG (IHDR), JPEG (SOF0), and GIF (header).
-/// For SVG and WebP, or on failure, returns (100, 100) as fallback.
-fn parse_image_dimensions(data: &[u8]) -> (u32, u32) {
-    // PNG: 8-byte signature + IHDR chunk: 4 len + 4 "IHDR" + 4 W + 4 H
-    if data.len() >= 24
-        && data[0..8] == [137, 80, 78, 71, 13, 10, 26, 10]
-    {
-        let width = u32::from_be_bytes([data[16], data[17], data[18], data[19]]);
-        let height = u32::from_be_bytes([data[20], data[21], data[22], data[23]]);
-        return (width, height);
-    }
-
-    // JPEG: starts with SOI marker FF D8; scan for SOF0 (FF C0) / SOF1 (FF C1) / SOF2 (FF C2)
-    if data.len() >= 4 && data[0] == 0xFF && data[1] == 0xD8 {
-        let mut pos = 2;
-        while pos + 8 < data.len() {
-            if data[pos] != 0xFF {
-                break;
-            }
-            let marker = data[pos + 1];
-            // SOF0, SOF1, SOF2 — contain dimensions at offset 5,6 (height) and 7,8 (width)
-            if marker == 0xC0 || marker == 0xC1 || marker == 0xC2 {
-                let height = u16::from_be_bytes([data[pos + 5], data[pos + 6]]);
-                let width = u16::from_be_bytes([data[pos + 7], data[pos + 8]]);
-                return (width as u32, height as u32);
-            }
-            // Skip past marker length (2 bytes after marker, before data)
-            let seg_len = u16::from_be_bytes([data[pos + 2], data[pos + 3]]);
-            if seg_len < 2 {
-                break;
-            }
-            pos += 2 + seg_len as usize;
-        }
-    }
-
-    // GIF: "GIF87a" or "GIF89a", then 2 bytes LE width, 2 bytes LE height
-    if data.len() >= 10
-        && &data[0..3] == b"GIF"
-        && (&data[3..6] == b"87a" || &data[3..6] == b"89a")
-    {
-        let width = u16::from_le_bytes([data[6], data[7]]);
-        let height = u16::from_le_bytes([data[8], data[9]]);
-        return (width as u32, height as u32);
-    }
-
-    // SVG: search for viewBox="x y width height" or viewBox='x y width height'
-    if data.len() > 100 && (data[0] == b'<' && (data[1] == b'?' || data[1] == b's')) {
-        if let Some(pos) = data.windows(7).position(|w| w == b"viewBox") {
-            let after = &data[pos + 7..];
-            // Skip = and whitespace before the quote
-            let q_pos = after.iter().position(|&b| b == b'"' || b == b'\'');
-            if let Some(qi) = q_pos {
-                let quote = after[qi];
-                let val_start = qi + 1;
-                if let Some(end) = after[val_start..].iter().position(|&b| b == quote) {
-                    let values: Vec<f64> = after[val_start..val_start + end]
-                        .split(|&b| b == b' ' || b == b',' || b == b'\t' || b == b'\n' || b == b'\r')
-                        .filter_map(|s| {
-                            if s.is_empty() { return None; }
-                            let s_str = std::str::from_utf8(s).ok()?;
-                            s_str.trim().parse::<f64>().ok()
-                        })
-                        .collect();
-                    if values.len() == 4 {
-                        return (values[2] as u32, values[3] as u32);
-                    }
-                }
-            }
-        }
-    }
-
-    // Fallback: 100×100 px so the image still appears
-    (100, 100)
-}
-
-/// Convert pixels to EMU (English Metric Units) at 96 DPI.
-/// 1 inch = 914400 EMU.
-fn px_to_emu(px: u32) -> i64 {
-    (px as f64 * 914_400.0 / 96.0) as i64
-}
-
-/// Convert SVG byte data to a PNG byte vector using resvg.
-/// Returns None on parse/render failure.
-/// Lazily-initialised font database with system fonts loaded.
-/// Cached to avoid re-loading thousands of fonts on every SVG conversion.
-fn system_fontdb() -> &'static std::sync::Arc<usvg::fontdb::Database> {
-    static FONTDB: std::sync::OnceLock<std::sync::Arc<usvg::fontdb::Database>> = std::sync::OnceLock::new();
-    FONTDB.get_or_init(|| {
-        let mut db = usvg::fontdb::Database::new();
-        db.load_system_fonts();
-        db.set_serif_family("Times New Roman");
-        db.set_sans_serif_family("Arial");
-        db.set_cursive_family("Comic Sans MS");
-        db.set_fantasy_family("Impact");
-        db.set_monospace_family("Courier New");
-        std::sync::Arc::new(db)
-    })
-}
-
-fn svg_to_png(svg_data: &[u8], scale: f64) -> Option<(Vec<u8>, u32, u32)> {
-    let opt = usvg::Options {
-        fontdb: system_fontdb().clone(),
-        ..usvg::Options::default()
-    };
-
-    let tree = match usvg::Tree::from_data(svg_data, &opt) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("[DOCX] svg_to_png: usvg parse error: {e:?}");
-            return None;
-        }
-    };
-    let size = tree.size();
-    let orig_w = size.width() as u32;
-    let orig_h = size.height() as u32;
-    let scaled_w = (orig_w as f64 * scale).ceil().max(1.0) as u32;
-    let scaled_h = (orig_h as f64 * scale).ceil().max(1.0) as u32;
-    let mut pixmap = match resvg::tiny_skia::Pixmap::new(scaled_w, scaled_h) {
-        Some(p) => p,
-        None => { eprintln!("[DOCX] svg_to_png: zero-size pixmap ({scaled_w}x{scaled_h})"); return None; }
-    };
-    let ts = resvg::tiny_skia::Transform::from_scale(scale as f32, scale as f32);
-    resvg::render(&tree, ts, &mut pixmap.as_mut());
-    match pixmap.encode_png() {
-        Ok(png) => Some((png, orig_w, orig_h)),
-        Err(e) => { eprintln!("[DOCX] svg_to_png: PNG encode error: {e}"); None }
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// Image writing
-// ═══════════════════════════════════════════════════════════════════════
-
-impl DocxWriter {
-    fn write_image(&mut self, url: &str, alt: &str, _base_path: &str) {
-        if !url.starts_with("data:") {
-            // Non-data URI — try fallback with text
-            self.write_text_run(&format!("[Image: {}]", alt));
-            return;
-        }
-
-        // Parse data URI: data:image/{ext};base64,{data}
-        let rest = url.strip_prefix("data:").unwrap_or(url);
-        let (mime_part, b64) = match rest.split_once(',') {
-            Some((m, d)) => (m, d),
-            None => { self.write_text_run(&format!("[Image: {}]", alt)); return; }
-        };
-
-        // Determine extension
-        let mut ext = if mime_part.contains("svg") { "svg" }
-                  else if mime_part.contains("png") { "png" }
-                  else if mime_part.contains("jpeg") || mime_part.contains("jpg") { "jpg" }
-                  else if mime_part.contains("gif") { "gif" }
-                  else if mime_part.contains("webp") { "webp" }
-                  else { "png" };
-
-        // Decode base64
-        let mut decoded = match base64::Engine::decode(
-            &base64::engine::general_purpose::STANDARD,
-            b64.trim()
-        ) {
-            Ok(d) => d,
-            Err(_) => { self.write_text_run(&format!("[Image: {}]", alt)); return; }
-        };
-
-        // SVG images — convert to high-DPI PNG for clarity in DOCX
-        // foreignObject SVGs are embedded directly (Word renders them natively).
-        let has_fo = decoded.windows(13).any(|w| w == b"foreignObject");
-        let mut svg_orig_dims: Option<(u32, u32)> = None; // unscaled SVG dims for emu
-        if ext == "svg" {
-            eprintln!("[DOCX] SVG image: {} bytes, foreignObject={}, action={}",
-                decoded.len(), has_fo,
-                if has_fo { "embed SVG (Word renders text)" } else { "convert to 2x PNG" });
-            if !has_fo {
-                // Render at 2x for sharp output; keep original dims for display
-                if let Some((png_data, ow, oh)) = svg_to_png(&decoded, 2.0) {
-                    decoded = png_data;
-                    ext = "png";
-                    svg_orig_dims = Some((ow, oh));
-                }
-            }
-        }
-
-        let image_name = format!("image{}.{}", self.images.len() + 1, ext);
-        let (w_px, h_px) = match svg_orig_dims {
-            Some((ow, oh)) => (ow, oh),
-            None => parse_image_dimensions(&decoded),
-        };
-        let cx = px_to_emu(w_px.max(1));
-        let cy = px_to_emu(h_px.max(1));
-        let cx_str = cx.to_string();
-        let cy_str = cy.to_string();
-        self.images.push((image_name.clone(), decoded));
-
-        // Register relationship
-        self.rel_id_counter += 1;
-        let rid = format!("rId{}", self.rel_id_counter);
-        self.rels_entries.push(RelEntry {
-            id: rid.clone(),
-            rel_type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image".to_string(),
-            target: format!("media/{}", image_name),
-            target_mode: None,
-        });
-
-        // Write drawing element
-        let w = &mut self.document;
-        w.write_event(Event::Start(BytesStart::new("w:r"))).unwrap();
-        w.write_event(Event::Start(BytesStart::new("w:drawing"))).unwrap();
-        w.write_event(Event::Start(BytesStart::new("wp:inline")
-            .with_attributes([("xmlns:wp", "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing")])
-            .with_attributes([("xmlns:a", "http://schemas.openxmlformats.org/drawingml/2006/main")])
-            .with_attributes([("xmlns:r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships")])))
-            .unwrap();
-
-        w.write_event(Event::Empty(BytesStart::new("wp:extent")
-            .with_attributes([("cx", cx_str.as_str())])
-            .with_attributes([("cy", cy_str.as_str())])))
-            .unwrap();
-
-        w.write_event(Event::Start(BytesStart::new("wp:docPr")
-            .with_attributes([("id", "1")])
-            .with_attributes([("name", alt)]))).unwrap();
-        w.write_event(Event::End(BytesEnd::new("wp:docPr"))).unwrap();
-
-        w.write_event(Event::Start(BytesStart::new("a:graphic"))).unwrap();
-        w.write_event(Event::Start(BytesStart::new("a:graphicData")
-            .with_attributes([("uri", "http://schemas.openxmlformats.org/drawingml/2006/picture")])))
-            .unwrap();
-        w.write_event(Event::Start(BytesStart::new("pic:pic")
-            .with_attributes([("xmlns:pic", "http://schemas.openxmlformats.org/drawingml/2006/picture")])))
-            .unwrap();
-
-        w.write_event(Event::Start(BytesStart::new("pic:blipFill"))).unwrap();
-        w.write_event(Event::Empty(BytesStart::new("a:blip")
-            .with_attributes([("r:embed", rid.as_str())])))
-            .unwrap();
-        w.write_event(Event::End(BytesEnd::new("pic:blipFill"))).unwrap();
-
-        w.write_event(Event::Start(BytesStart::new("pic:spPr"))).unwrap();
-        w.write_event(Event::Start(BytesStart::new("a:xfrm"))).unwrap();
-        w.write_event(Event::Empty(BytesStart::new("a:off")
-            .with_attributes([("x", "0")]).with_attributes([("y", "0")])))
-            .unwrap();
-        w.write_event(Event::Empty(BytesStart::new("a:ext")
-            .with_attributes([("cx", cx_str.as_str())]).with_attributes([("cy", cy_str.as_str())])))
-            .unwrap();
-        w.write_event(Event::End(BytesEnd::new("a:xfrm"))).unwrap();
-        w.write_event(Event::Start(BytesStart::new("a:prstGeom")
-            .with_attributes([("prst", "rect")]))).unwrap();
-        w.write_event(Event::End(BytesEnd::new("a:prstGeom"))).unwrap();
-        w.write_event(Event::End(BytesEnd::new("pic:spPr"))).unwrap();
-
-        w.write_event(Event::End(BytesEnd::new("pic:pic"))).unwrap();
-        w.write_event(Event::End(BytesEnd::new("a:graphicData"))).unwrap();
-        w.write_event(Event::End(BytesEnd::new("a:graphic"))).unwrap();
-        w.write_event(Event::End(BytesEnd::new("wp:inline"))).unwrap();
-        w.write_event(Event::End(BytesEnd::new("w:drawing"))).unwrap();
-        w.write_event(Event::End(BytesEnd::new("w:r"))).unwrap();
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// Footnote support
-// ═══════════════════════════════════════════════════════════════════════
-
-impl DocxWriter {
-    fn collect_footnotes<'a>(&mut self, root: &'a AstNode<'a>) {
-        for child in root.children() {
-            self.collect_footnotes_recursive(child);
-        }
-    }
-
-    fn collect_footnotes_recursive<'a>(&mut self, node: &'a AstNode<'a>) {
-        match &node.data.borrow().value {
-            NodeValue::FootnoteDefinition(_) => {
-                // Render footnote content to a buffer
-                let mut fn_writer = Writer::new_with_indent(Vec::new(), b' ', 2);
-                for child in node.children() {
-                    render_to_writer(child, &mut fn_writer, "");
-                }
-                let id = self.footnote_defs.len() as u64 + 1; // sequential 1-based IDs
-                self.footnote_defs.push((id, fn_writer.into_inner()));
-            }
-            _ => {
-                for child in node.children() {
-                    self.collect_footnotes_recursive(child);
-                }
-            }
-        }
-    }
-}
-
-// ── render_to_writer is a standalone helper outside impl DocxWriter ──
-
-/// Walk a sub-tree and write to an arbitrary writer (for footnotes content)
-fn render_to_writer<'a>(node: &'a AstNode<'a>, writer: &mut Writer<Vec<u8>>, _base_path: &str) {
-    match &node.data.borrow().value {
-        NodeValue::Paragraph => {
-            writer.write_event(Event::Start(BytesStart::new("w:p"))).unwrap();
-            for child in node.children() {
-                render_to_writer(child, writer, _base_path);
-            }
-            writer.write_event(Event::End(BytesEnd::new("w:p"))).unwrap();
-        }
-        NodeValue::Text(text) => {
-            writer.write_event(Event::Start(BytesStart::new("w:r"))).unwrap();
-            writer.write_event(Event::Start(BytesStart::new("w:t"))).unwrap();
-            writer.write_event(Event::Text(BytesText::new(text))).unwrap();
-            writer.write_event(Event::End(BytesEnd::new("w:t"))).unwrap();
-            writer.write_event(Event::End(BytesEnd::new("w:r"))).unwrap();
-        }
-        NodeValue::Strong => {
-            writer.write_event(Event::Start(BytesStart::new("w:r"))).unwrap();
-            writer.write_event(Event::Empty(BytesStart::new("w:b"))).unwrap();
-            for child in node.children() {
-                render_to_writer(child, writer, _base_path);
-            }
-            writer.write_event(Event::End(BytesEnd::new("w:r"))).unwrap();
-        }
-        _ => {
-            for child in node.children() {
-                render_to_writer(child, writer, _base_path);
-            }
-        }
-    }
-}
-
-// ── back inside impl DocxWriter ──
-
-impl DocxWriter {
-    fn resolve_footnote_id(&self, original: u64) -> u64 {
-        // Simple pass-through — comrak IDs should be 1-based and contiguous
-        original
-    }
-
-    fn write_footnote_reference(&mut self, id: u64) {
-        let w = &mut self.document;
-        w.write_event(Event::Start(BytesStart::new("w:r"))).unwrap();
-        let mut ref_elem = BytesStart::new("w:footnoteReference");
-        ref_elem.push_attribute(("w:id", id.to_string().as_str()));
-        w.write_event(Event::Empty(ref_elem)).unwrap();
-        w.write_event(Event::End(BytesEnd::new("w:r"))).unwrap();
-    }
-
-    fn write_footnotes_part(&mut self) -> Result<(), String> {
-        let mut fn_w = Writer::new_with_indent(Vec::new(), b' ', 2);
-        fn_w.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
-            .map_err(|e| e.to_string())?;
-        fn_w.write_event(Event::Start(BytesStart::new("w:footnotes")
-            .with_attributes([("xmlns:w", "http://schemas.openxmlformats.org/wordprocessingml/2006/main")])
-            .with_attributes([("xmlns:r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships")])))
-            .map_err(|e| e.to_string())?;
-
-        // Separator footnote (Word requires it)
-        fn_w.write_event(Event::Start(BytesStart::new("w:footnote").with_attributes([("w:id", "-1")])))
-            .map_err(|e| e.to_string())?;
-        fn_w.write_event(Event::Start(BytesStart::new("w:p"))).map_err(|e| e.to_string())?;
-        fn_w.write_event(Event::Start(BytesStart::new("w:r"))).map_err(|e| e.to_string())?;
-        fn_w.write_event(Event::Empty(BytesStart::new("w:separator"))).map_err(|e| e.to_string())?;
-        fn_w.write_event(Event::End(BytesEnd::new("w:r"))).map_err(|e| e.to_string())?;
-        fn_w.write_event(Event::End(BytesEnd::new("w:p"))).map_err(|e| e.to_string())?;
-        fn_w.write_event(Event::End(BytesEnd::new("w:footnote"))).map_err(|e| e.to_string())?;
-
-        // Continuation separator footnote
-        fn_w.write_event(Event::Start(BytesStart::new("w:footnote").with_attributes([("w:id", "0")])))
-            .map_err(|e| e.to_string())?;
-        fn_w.write_event(Event::Start(BytesStart::new("w:p"))).map_err(|e| e.to_string())?;
-        fn_w.write_event(Event::Start(BytesStart::new("w:r"))).map_err(|e| e.to_string())?;
-        fn_w.write_event(Event::Empty(BytesStart::new("w:continuationSeparator"))).map_err(|e| e.to_string())?;
-        fn_w.write_event(Event::End(BytesEnd::new("w:r"))).map_err(|e| e.to_string())?;
-        fn_w.write_event(Event::End(BytesEnd::new("w:p"))).map_err(|e| e.to_string())?;
-        fn_w.write_event(Event::End(BytesEnd::new("w:footnote"))).map_err(|e| e.to_string())?;
-
-        // User footnotes
-        for (id, content) in &self.footnote_defs {
-            fn_w.write_event(Event::Start(BytesStart::new("w:footnote").with_attributes([("w:id", id.to_string().as_str())])))
-                .map_err(|e| e.to_string())?;
-            fn_w.get_mut().extend_from_slice(content);
-            fn_w.write_event(Event::End(BytesEnd::new("w:footnote"))).map_err(|e| e.to_string())?;
-        }
-
-        fn_w.write_event(Event::End(BytesEnd::new("w:footnotes")))
-            .map_err(|e| e.to_string())?;
-
-        self.footnotes = Some(fn_w);
-        Ok(())
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════
 // Tests
 // ═══════════════════════════════════════════════════════════════════════
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::images::svg_to_png;
 
     #[test]
     fn test_generate_minimal_docx() {
@@ -1570,12 +1223,20 @@ mod tests {
 
         use zip::ZipArchive;
         use std::io::Cursor;
-        let mut archive = ZipArchive::new(Cursor::new(bytes))
-            .expect("Output must be a valid ZIP archive");
+        let mut archive =
+            ZipArchive::new(Cursor::new(bytes)).expect("Output must be a valid ZIP archive");
 
-        let required = ["[Content_Types].xml", "word/document.xml", "word/styles.xml"];
+        let required = [
+            "[Content_Types].xml",
+            "word/document.xml",
+            "word/styles.xml",
+        ];
         for name in &required {
-            assert!(archive.by_name(name).is_ok(), "Missing required OOXML entry: {}", name);
+            assert!(
+                archive.by_name(name).is_ok(),
+                "Missing required OOXML entry: {}",
+                name
+            );
         }
     }
 
@@ -1603,7 +1264,8 @@ mod tests {
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
-        let doc = std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
+        let doc =
+            std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
         assert!(doc.contains("w:b"), "Should have bold");
         assert!(doc.contains("w:i"), "Should have italic");
         assert!(doc.contains("Consolas"), "Should have inline code font");
@@ -1617,7 +1279,8 @@ mod tests {
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
-        let doc = std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
+        let doc =
+            std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
         assert!(doc.contains("w:tbl"), "Should have table");
         assert!(doc.contains("H1"), "Header should be in document");
         assert!(doc.contains("A"), "Cell content should be in document");
@@ -1630,10 +1293,14 @@ mod tests {
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
-        let doc = std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
+        let doc =
+            std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
         assert!(doc.contains("Item 1"), "Bullet item");
         assert!(doc.contains("One"), "Ordered item");
-        assert!(archive.by_name("word/numbering.xml").is_ok(), "Should have numbering.xml");
+        assert!(
+            archive.by_name("word/numbering.xml").is_ok(),
+            "Should have numbering.xml"
+        );
     }
 
     #[test]
@@ -1643,14 +1310,20 @@ mod tests {
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
-        let doc = std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
+        let doc =
+            std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
         assert!(doc.contains("w:hyperlink"), "Should have hyperlink");
         assert!(doc.contains("Example"), "Link text should be present");
         // Verify the hyperlink relationship is inside well-formed XML
-        let rels = std::io::read_to_string(archive.by_name("word/_rels/document.xml.rels").unwrap()).unwrap();
+        let rels =
+            std::io::read_to_string(archive.by_name("word/_rels/document.xml.rels").unwrap())
+                .unwrap();
         assert!(rels.contains("hyperlink"), "Rels should contain hyperlink entry");
         // Verify there is no Relationship after </Relationships>
-        assert!(!rels.contains("</Relationships>\n  <Relationship"), "No relationships after closing tag");
+        assert!(
+            !rels.contains("</Relationships>\n  <Relationship"),
+            "No relationships after closing tag"
+        );
     }
 
     #[test]
@@ -1660,7 +1333,8 @@ mod tests {
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
-        let doc = std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
+        let doc =
+            std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
         assert!(doc.contains("Quote"), "Should use Quote style");
     }
 
@@ -1671,39 +1345,68 @@ mod tests {
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
-        assert!(archive.by_name("word/media/image1.png").is_ok(), "Image should be embedded");
+        assert!(
+            archive.by_name("word/media/image1.png").is_ok(),
+            "Image should be embedded"
+        );
         // Verify the image relationship is inside well-formed rels XML
-        let rels = std::io::read_to_string(archive.by_name("word/_rels/document.xml.rels").unwrap()).unwrap();
-        assert!(rels.contains("media/image1.png"), "Rels should reference media/image1.png");
+        let rels =
+            std::io::read_to_string(archive.by_name("word/_rels/document.xml.rels").unwrap())
+                .unwrap();
+        assert!(
+            rels.contains("media/image1.png"),
+            "Rels should reference media/image1.png"
+        );
         // Verify no trailing rels after closing tag
-        assert!(!rels.contains("</Relationships>\n  <Relationship"), "No relationships after closing tag");
+        assert!(
+            !rels.contains("</Relationships>\n  <Relationship"),
+            "No relationships after closing tag"
+        );
     }
 
     #[test]
     fn test_document_rels_well_formed() {
-        let md = "# Hello
-
-**bold** [link](https://example.com) ![img](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==)";
+        let md = "# Hello\n\n**bold** [link](https://example.com) ![img](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==)";
         let bytes = generate(md, "", "").unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
-        let rels = std::io::read_to_string(archive.by_name("word/_rels/document.xml.rels").unwrap()).unwrap();
+        let rels =
+            std::io::read_to_string(archive.by_name("word/_rels/document.xml.rels").unwrap())
+                .unwrap();
 
         // Must have exactly one top-level <Relationships> element
-        // Count XML declaration (0.5) + opening <Relationships ...> = distinct lines
-        let open_count = rels.lines().filter(|l| l.starts_with("<Relationships")).count();
+        let open_count = rels
+            .lines()
+            .filter(|l| l.starts_with("<Relationships"))
+            .count();
         assert_eq!(open_count, 1, "Single <Relationships> opening");
-        assert_eq!(rels.matches("</Relationships>").count(), 1, "Single </Relationships> closing");
+        assert_eq!(
+            rels.matches("</Relationships>").count(),
+            1,
+            "Single </Relationships> closing"
+        );
 
         // All Relationship entries must be self-closing empties
-        assert!(!rels.contains("</Relationship>"), "No non-empty Relationship elements");
+        assert!(
+            !rels.contains("</Relationship>"),
+            "No non-empty Relationship elements"
+        );
 
         // Should include styles, numbering, image, and hyperlink references
         assert!(rels.contains("styles.xml"), "Rels must reference styles.xml");
-        assert!(rels.contains("hyperlink"), "Rels must reference hyperlink (External)");
-        assert!(rels.contains("media/image1.png"), "Rels must reference image");
-        assert!(rels.contains("TargetMode=\"External\""), "Hyperlink should have TargetMode=\"External\"");
+        assert!(
+            rels.contains("hyperlink"),
+            "Rels must reference hyperlink (External)"
+        );
+        assert!(
+            rels.contains("media/image1.png"),
+            "Rels must reference image"
+        );
+        assert!(
+            rels.contains("TargetMode=\"External\""),
+            "Hyperlink should have TargetMode=\"External\""
+        );
     }
 
     #[test]
@@ -1713,10 +1416,17 @@ mod tests {
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
-        let doc = std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
+        let doc =
+            std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
         assert!(doc.contains("Page"), "Wikilink target should render as text");
-        assert!(doc.contains("Display"), "Wikilink alias should render as text");
-        assert!(!doc.contains("[[Page]]"), "Raw wikilink syntax should NOT appear");
+        assert!(
+            doc.contains("Display"),
+            "Wikilink alias should render as text"
+        );
+        assert!(
+            !doc.contains("[[Page]]"),
+            "Raw wikilink syntax should NOT appear"
+        );
     }
 
     #[test]
@@ -1726,11 +1436,15 @@ mod tests {
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
-        let doc = std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
+        let doc =
+            std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
         assert!(doc.contains("Unchecked"), "Unchecked item text");
         assert!(doc.contains("Checked"), "Checked item text");
         assert!(!doc.contains("[ ]"), "Raw unchecked marker should be stripped");
-        assert!(!doc.contains("[x]"), "Raw checked marker should be stripped (case-insensitive)");
+        assert!(
+            !doc.contains("[x]"),
+            "Raw checked marker should be stripped (case-insensitive)"
+        );
     }
 
     #[test]
@@ -1740,7 +1454,8 @@ mod tests {
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
-        let doc = std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
+        let doc =
+            std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
         assert!(doc.contains("rust"), "Language label should appear");
         assert!(doc.contains("Code"), "Should use Code style");
     }
@@ -1752,15 +1467,26 @@ mod tests {
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
-        let doc = std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
-        assert!(doc.contains("中文标题"), "CJK heading text should render");
-        assert!(doc.contains("这是中文段落"), "CJK paragraph text should render");
+        let doc =
+            std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
+        assert!(
+            doc.contains("中文标题"),
+            "CJK heading text should render"
+        );
+        assert!(
+            doc.contains("这是中文段落"),
+            "CJK paragraph text should render"
+        );
     }
 
     #[test]
     fn test_generate_empty() {
         let result = generate("", "", "");
-        assert!(result.is_ok(), "Empty input should produce valid minimal docx, got: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Empty input should produce valid minimal docx, got: {:?}",
+            result.err()
+        );
         let bytes = result.unwrap();
         use zip::ZipArchive;
         use std::io::Cursor;
@@ -1776,8 +1502,12 @@ mod tests {
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
-        let doc = std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
-        assert!(doc.contains("footnoteReference"), "Should have footnote reference");
+        let doc =
+            std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
+        assert!(
+            doc.contains("footnoteReference"),
+            "Should have footnote reference"
+        );
     }
 
     #[test]
@@ -1788,7 +1518,13 @@ mod tests {
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
 
-        let required = ["[Content_Types].xml", "_rels/.rels", "word/document.xml", "word/styles.xml", "word/_rels/document.xml.rels"];
+        let required = [
+            "[Content_Types].xml",
+            "_rels/.rels",
+            "word/document.xml",
+            "word/styles.xml",
+            "word/_rels/document.xml.rels",
+        ];
         for name in &required {
             assert!(archive.by_name(name).is_ok(), "Missing: {}", name);
         }
@@ -1873,7 +1609,10 @@ mod tests {
   </g>
 </svg>"##;
         let png = svg_to_png(svg.as_bytes(), 1.0);
-        assert!(png.is_some(), "svg_to_png returned None for mermaid ID-prefixed SVG");
+        assert!(
+            png.is_some(),
+            "svg_to_png returned None for mermaid ID-prefixed SVG"
+        );
         let (png, _ow, _oh) = png.unwrap();
         assert_eq!(&png[..8], &[137, 80, 78, 71, 13, 10, 26, 10], "Not a valid PNG");
         assert!(png.len() > 1000, "PNG too small: {} bytes", png.len());
@@ -1881,9 +1620,6 @@ mod tests {
 
     #[test]
     fn test_svg_to_png_foreignobject_loses_text() {
-        // Mermaid uses <foreignObject> for text when useHtmlLabels=true (default).
-        // usvg 0.43 does NOT support foreignObject — it silently drops the element.
-        // This test proves the SVG→PNG still produces a PNG, but text is missing.
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="300" height="100" viewBox="0 0 300 100">
   <rect width="300" height="100" fill="#f0f0f0" rx="5"/>
   <foreignObject x="50" y="30" width="200" height="40">
@@ -1893,23 +1629,20 @@ mod tests {
   </foreignObject>
 </svg>"##;
         let png = svg_to_png(svg.as_bytes(), 1.0);
-        assert!(png.is_some(), "svg_to_png returned None for foreignObject SVG");
+        assert!(
+            png.is_some(),
+            "svg_to_png returned None for foreignObject SVG"
+        );
         let (png, _ow, _oh) = png.unwrap();
         assert_eq!(&png[..8], &[137, 80, 78, 71, 13, 10, 26, 10], "Not a valid PNG");
-        // The PNG will be much smaller when foreignObject text is dropped
-        // (shapes-only vs shapes+text). If text rendered, expect > 2000 bytes.
-        // If < 500, text was aggressively dropped.
         eprintln!(
             "foreignObject SVG → PNG: {} bytes (text-LOSS expected: < 2000 without text)",
             png.len()
         );
-        // Note: No assertion — this is informational.
-        // The fix is to set useHtmlLabels=false in mermaid config.
     }
 
     #[test]
     fn test_svg_to_png_foreignobject_dropped_is_smaller() {
-        // Same SVG with <text> renders text correctly — proves foreignObject is the issue
         let svg_fo = r##"<svg xmlns="http://www.w3.org/2000/svg" width="300" height="100" viewBox="0 0 300 100">
   <rect width="300" height="100" fill="#f0f0f0" rx="5"/>
   <foreignObject x="50" y="30" width="200" height="40">
@@ -1922,10 +1655,16 @@ mod tests {
 </svg>"##;
         let (png_fo, _ow, _oh) = svg_to_png(svg_fo.as_bytes(), 1.0).unwrap();
         let (png_text, _ow, _oh) = svg_to_png(svg_text.as_bytes(), 1.0).unwrap();
-        // The foreignObject version should be significantly smaller (text dropped)
-        // The <text> version should be > 2000 bytes (text rendered as glyphs)
-        assert!(png_text.len() > 2000, "Expected > 2000 bytes for <text> SVG, got {}", png_text.len());
-        eprintln!("<text> SVG → {} bytes | <foreignObject> SVG → {} bytes", png_text.len(), png_fo.len());
+        assert!(
+            png_text.len() > 2000,
+            "Expected > 2000 bytes for <text> SVG, got {}",
+            png_text.len()
+        );
+        eprintln!(
+            "<text> SVG → {} bytes | <foreignObject> SVG → {} bytes",
+            png_text.len(),
+            png_fo.len()
+        );
     }
 
     #[test]
@@ -1935,7 +1674,8 @@ mod tests {
   <rect width="200" height="100" fill="#f0f0f0" rx="10"/>
   <text x="100" y="55" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#333">Hello 世界</text>
 </svg>"##;
-        let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, svg_data.as_bytes());
+        let b64 =
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, svg_data.as_bytes());
         let md = format!("![test](data:image/svg+xml;base64,{})", b64);
 
         let bytes = generate(&md, "", "").unwrap();
@@ -1944,20 +1684,22 @@ mod tests {
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
 
         // Should produce a PNG (not SVG) in media
-        assert!(archive.by_name("word/media/image1.png").is_ok(),
-                "SVG data URI should produce PNG in DOCX media");
+        assert!(
+            archive.by_name("word/media/image1.png").is_ok(),
+            "SVG data URI should produce PNG in DOCX media"
+        );
         // The PNG should have reasonable size (> 500 bytes for visible content)
         let png_entry = archive.by_name("word/media/image1.png").unwrap();
         let png_size = png_entry.size();
         assert!(png_size > 500, "PNG too small: {} bytes", png_size);
-        eprintln!("DOCX integration: SVG→PNG produced {} bytes in DOCX media", png_size);
+        eprintln!(
+            "DOCX integration: SVG→PNG produced {} bytes in DOCX media",
+            png_size
+        );
     }
 
     #[test]
     fn test_foreignobject_svg_embedded_as_svg_in_docx() {
-        // Integration test: SVG with <foreignObject> (like mermaid output)
-        // should be embedded as SVG (not converted to PNG) — Word renders
-        // foreignObject text natively.
         let svg_data = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 108 174" style="max-width:108px;">
   <style>#A .label{font-family:sans-serif;font-size:16px;fill:#333;}</style>
   <g class="node">
@@ -1969,7 +1711,8 @@ mod tests {
     </g>
   </g>
 </svg>"##;
-        let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, svg_data.as_bytes());
+        let b64 =
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, svg_data.as_bytes());
         let md = format!("![test](data:image/svg+xml;base64,{})", b64);
 
         let bytes = generate(&md, "", "").unwrap();
@@ -1979,20 +1722,25 @@ mod tests {
 
         // Should produce SVG (not PNG) in media — foreignObject detected
         let svg_entry = archive.by_name("word/media/image1.svg");
-        assert!(svg_entry.is_ok(), "foreignObject SVG should produce .svg in DOCX media, not PNG");
+        assert!(
+            svg_entry.is_ok(),
+            "foreignObject SVG should produce .svg in DOCX media, not PNG"
+        );
         let svg_content = std::io::read_to_string(svg_entry.unwrap()).unwrap();
-        assert!(svg_content.contains("foreignObject"), "Embedded SVG must retain foreignObject");
+        assert!(
+            svg_content.contains("foreignObject"),
+            "Embedded SVG must retain foreignObject"
+        );
         assert!(svg_content.contains("开始"), "Embedded SVG must retain CJK text");
 
-        // Verify document.xml references the SVG (not a PNG)
-        let doc = std::io::read_to_string(archive.by_name("word/document.xml").unwrap()).unwrap();
-        // The rels target might use a different path — check for image1.svg in either rels or doc
-        eprintln!("document.xml snippet: ...{}...",
-            &doc[doc.len().min(300)..]); // tail of document
         // Check relationships
-        let rels = std::io::read_to_string(archive.by_name("word/_rels/document.xml.rels").unwrap()).unwrap();
-        eprintln!("rels: {}", rels);
-        assert!(rels.contains("image1.svg"), "Relationships must reference SVG file");
+        let rels =
+            std::io::read_to_string(archive.by_name("word/_rels/document.xml.rels").unwrap())
+                .unwrap();
+        assert!(
+            rels.contains("image1.svg"),
+            "Relationships must reference SVG file"
+        );
         eprintln!("foreignObject SVG pipeline: embedded as SVG with CJK text preserved");
     }
 
@@ -2003,9 +1751,19 @@ mod tests {
         use zip::ZipArchive;
         use std::io::Cursor;
         let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
-        let rels = std::io::read_to_string(archive.by_name("_rels/.rels").unwrap()).unwrap();
-        assert!(rels.contains("word/document.xml"), "Package rels must reference word/document.xml");
-        assert!(rels.contains("officeDocument"), "Package rels must have officeDocument type");
-        assert!(rels.contains("docProps/core.xml"), "Package rels must reference docProps/core.xml");
+        let rels =
+            std::io::read_to_string(archive.by_name("_rels/.rels").unwrap()).unwrap();
+        assert!(
+            rels.contains("word/document.xml"),
+            "Package rels must reference word/document.xml"
+        );
+        assert!(
+            rels.contains("officeDocument"),
+            "Package rels must have officeDocument type"
+        );
+        assert!(
+            rels.contains("docProps/core.xml"),
+            "Package rels must reference docProps/core.xml"
+        );
     }
 }
