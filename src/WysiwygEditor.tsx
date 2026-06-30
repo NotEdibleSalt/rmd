@@ -133,6 +133,8 @@ export function WysiwygEditor() {
 
   // Search highlight state — shared with the ProseMirror plugin via ref
   const searchRef = useRef({ query: '', caseSensitive: false });
+  // ponytail: cache compiled regex to re-use across apply calls
+  const searchReRef = useRef<{ re: RegExp; query: string; caseSensitive: boolean } | null>(null);
   const findQuery = useEditorStore((s) => s.findQuery);
   const findReplaceOpen = useEditorStore((s) => s.findReplaceOpen);
   const findCaseSensitive = useEditorStore((s) => s.findCaseSensitive);
@@ -228,6 +230,7 @@ export function WysiwygEditor() {
       MathBlock,
       MathInline,
       // ProseMirror plugin: highlight find-and-replace matches
+      // ponytail: cache compiled regex across apply calls, avoid re-escape on every keystroke
       new Plugin({
         key: new PluginKey('search'),
         state: {
@@ -235,16 +238,19 @@ export function WysiwygEditor() {
           apply(tr, old) {
             if (!tr.docChanged && !tr.getMeta('search')) return old;
             const { query, caseSensitive } = searchRef.current;
-            if (!query) return DecorationSet.empty;
-            const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const flags = caseSensitive ? 'g' : 'gi';
-            const regex = new RegExp(escaped, flags);
+            if (!query) { searchReRef.current = null; return DecorationSet.empty; }
+            const cache = searchReRef.current;
+            if (!cache || cache.query !== query || cache.caseSensitive !== caseSensitive) {
+              const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              searchReRef.current = { re: new RegExp(escaped, caseSensitive ? 'g' : 'gi'), query, caseSensitive };
+            }
+            const re = searchReRef.current!.re;
             const decorations: Decoration[] = [];
             tr.doc.descendants((node: any, pos: number) => {
               if (node.isText) {
                 const text = node.text || '';
                 let m: RegExpExecArray | null;
-                while ((m = regex.exec(text)) !== null) {
+                while ((m = re.exec(text)) !== null) {
                   decorations.push(Decoration.inline(pos + m.index, pos + m.index + m[0].length, { class: 'search-highlight' }));
                 }
               }
