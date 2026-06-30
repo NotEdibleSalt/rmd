@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEditorStore, AppConfig } from './store';
 import { useMarkdownTheme } from './theme/MarkdownThemeProvider';
+import { open } from '@tauri-apps/plugin-dialog';
 
 export function SettingsPanel() {
   const { config, setConfig, setSettingsOpen, externalThemePath } = useEditorStore();
@@ -149,7 +150,6 @@ export function SettingsPanel() {
                   className="btn btn-secondary"
                   onClick={async () => {
                     try {
-                      const { open } = await import('@tauri-apps/plugin-dialog');
                       const selected = await open({
                         directory: true,
                         multiple: false,
@@ -191,7 +191,6 @@ export function SettingsPanel() {
                   className="btn btn-secondary"
                   onClick={async () => {
                     try {
-                      const { open } = await import('@tauri-apps/plugin-dialog');
                       const selected = await open({
                         directory: true,
                         multiple: false,

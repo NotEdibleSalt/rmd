@@ -1,4 +1,7 @@
 import { useEditorStore } from '../store';
+import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
+import { readTextFile } from '@tauri-apps/plugin-fs';
 
 // Raw CSS imports from built-in themes
 import goodseeLight from './goodsee/goodsee.css?raw';
@@ -173,7 +176,6 @@ function persistExternalThemePath(filePath: string | null): void {
  */
 export async function loadExternalThemeCSS(filePath: string): Promise<string> {
   try {
-    const { readTextFile } = await import('@tauri-apps/plugin-fs');
     const css = await readTextFile(filePath);
     const adapted = adaptCssFile(css);
     injectStyleTag(STYLE_ID, adapted);
@@ -230,7 +232,6 @@ export async function initMarkdownTheme(): Promise<void> {
  */
 export async function configureThemeStorageDir(): Promise<string | null> {
   try {
-    const { open } = await import('@tauri-apps/plugin-dialog');
     const selected = await open({
       directory: true,
       multiple: false,
@@ -238,7 +239,6 @@ export async function configureThemeStorageDir(): Promise<string | null> {
     });
     if (!selected) return null;
 
-    const { invoke } = await import('@tauri-apps/api/core');
     await invoke('set_external_theme_dir', { path: selected });
 
     const store = useEditorStore.getState();
@@ -257,7 +257,6 @@ export async function configureThemeStorageDir(): Promise<string | null> {
  */
 export async function uploadExternalThemeZip(): Promise<{ path: string; name: string; dir_name: string }[] | null> {
   try {
-    const { open } = await import('@tauri-apps/plugin-dialog');
     const selected = await open({
       multiple: false,
       filters: [{ name: 'ZIP 压缩文件', extensions: ['zip'] }],
@@ -265,7 +264,6 @@ export async function uploadExternalThemeZip(): Promise<{ path: string; name: st
     });
     if (!selected) return null;
 
-    const { invoke } = await import('@tauri-apps/api/core');
     const themes = await invoke<{ path: string; name: string; dir_name: string }[]>('upload_external_theme', { zipPath: selected });
     return themes;
   } catch (e) {
@@ -279,7 +277,6 @@ export async function uploadExternalThemeZip(): Promise<{ path: string; name: st
  */
 export async function getExternalThemeList(): Promise<{ path: string; name: string; dir_name: string }[]> {
   try {
-    const { invoke } = await import('@tauri-apps/api/core');
     return await invoke<{ path: string; name: string; dir_name: string }[]>('list_external_themes');
   } catch (e) {
     console.error('Failed to list external themes:', e);
@@ -292,7 +289,6 @@ export async function getExternalThemeList(): Promise<{ path: string; name: stri
  */
 export async function deleteExternalTheme(themePath: string): Promise<boolean> {
   try {
-    const { invoke } = await import('@tauri-apps/api/core');
     await invoke('delete_external_theme', { themePath });
     return true;
   } catch (e) {

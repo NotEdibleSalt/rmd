@@ -1,5 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useEditorStore, FileEntry, selectCurrentFile } from './store';
+import { invoke } from '@tauri-apps/api/core';
+import { open, confirm as dialogConfirm } from '@tauri-apps/plugin-dialog';
 
 /* ─── Tree node model ─── */
 interface DirNode {
@@ -17,7 +19,6 @@ interface CtxMenu {
 }
 
 async function readDir(path: string): Promise<FileEntry[]> {
-  const { invoke } = await import('@tauri-apps/api/core');
   return invoke<FileEntry[]>('read_dir', { path });
 }
 
@@ -143,7 +144,6 @@ export function FileBrowser() {
         const state = useEditorStore.getState();
         const newConfig = { ...state.config, recent_files: updated };
         setRecentFiles(updated);
-        const { invoke } = await import('@tauri-apps/api/core');
         invoke('set_config', { newConfig }).catch(() => {});
       }
     })();
@@ -235,7 +235,6 @@ export function FileBrowser() {
 
   const handleNewFile = async () => {
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
       const name = `新文档_${Date.now()}.md`;
       const rootDir = workspaceRoot || currentDir || '.';
       const path = `${rootDir}/${name}`;
@@ -254,7 +253,6 @@ export function FileBrowser() {
   const handleDelete = async (e: React.MouseEvent | undefined, entry: FileEntry) => {
     e?.stopPropagation();
     try {
-      const { confirm: dialogConfirm } = await import('@tauri-apps/plugin-dialog');
       const title = '确认删除';
       const body = entry.is_dir
         ? `确定要删除目录「${entry.name}」及其所有内容？\n\n此操作不可撤销。删除后文件将无法恢复。`
@@ -310,7 +308,6 @@ export function FileBrowser() {
 
   const handleSetWorkspace = async () => {
     try {
-      const { open } = await import('@tauri-apps/plugin-dialog');
       const selected = await open({
         directory: true,
         multiple: false,

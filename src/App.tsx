@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useState, useRef } from 'react';
-import { useEditorStore } from './store';
+import { useEditorStore, ensureImageSaveDir } from './store';
 import { Toolbar } from './Toolbar';
 import { TabBar } from './TabBar';
 import { StatusBar } from './StatusBar';
@@ -15,6 +15,10 @@ import { FindReplace } from './FindReplace';
 import { ShortcutsPanel } from './ShortcutsPanel';
 import { MarkdownThemeProvider } from './theme/MarkdownThemeProvider';
 import { SavePromptModal } from './SavePromptModal';
+import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { copyFile, mkdir } from '@tauri-apps/plugin-fs';
 import { WelcomeScreen } from './WelcomeScreen';
 import { BacklinksPanel } from './BacklinksPanel';
 import { GraphView } from './GraphView';
@@ -42,7 +46,6 @@ function App() {
   useEffect(() => {
     async function load() {
       try {
-        const { invoke } = await import('@tauri-apps/api/core');
         const cfg = await invoke('get_config');
         if (cfg) {
           setConfig(cfg as any);
@@ -103,9 +106,6 @@ function App() {
     let unlisten: (() => void) | undefined;
     (async () => {
       try {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        const { invoke } = await import('@tauri-apps/api/core');
-
         unlisten = await getCurrentWindow().listen<undefined>('app://close-requested', async () => {
           const s = useEditorStore.getState();
 
@@ -181,7 +181,6 @@ function App() {
     let unlisten: (() => void) | undefined;
     (async () => {
       try {
-        const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
         unlisten = await getCurrentWebviewWindow().onDragDropEvent((event) => {
           if (event.payload.type === 'drop') {
             const paths = event.payload.paths as string[];
@@ -353,8 +352,6 @@ function App() {
  * Copies the image to the media/ folder and inserts into the editor.
  */
 async function handleWindowDroppedImage(imgPath: string, store: ReturnType<typeof useEditorStore.getState>) {
-  const { ensureImageSaveDir } = await import('./store');
-
   // 首次弹出目录选择，后续自动复用
   const saveDir = await ensureImageSaveDir();
   if (!saveDir) return;
@@ -365,7 +362,6 @@ async function handleWindowDroppedImage(imgPath: string, store: ReturnType<typeo
   const destPath = `${saveDir}/${filename}`;
 
   try {
-    const { copyFile, mkdir } = await import('@tauri-apps/plugin-fs');
     await mkdir(saveDir, { recursive: true }).catch(() => {});
     await copyFile(imgPath, destPath);
     await store.insertImageFromPath(destPath);
@@ -373,7 +369,6 @@ async function handleWindowDroppedImage(imgPath: string, store: ReturnType<typeo
     console.error('Failed to copy dropped image to media dir, falling back to Rust read+save:', e);
     // Fallback: read + write via Rust IPC (uses std::fs, bypasses fs plugin scope)
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
       const b64 = await invoke<string>('read_image_base64', { path: imgPath });
       const savedPath = await invoke<string>('save_image', {
         base64Data: b64,

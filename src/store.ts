@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { debounce } from './utils/debounce';
 import { normalizeImagePaths } from './utils/image';
 import { WorkspaceIndex, WorkspaceFile, BacklinkEntry, GraphData } from './lib/workspaceIndex';
+import { invoke as tauriInvoke, convertFileSrc } from '@tauri-apps/api/core';
+import { ask, open } from '@tauri-apps/plugin-dialog';
 
 export interface TocItem {
   level: number;
@@ -234,8 +236,7 @@ interface EditorStore {
 
 /* ─── Invoke helper ─── */
 
-async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  const { invoke: tauriInvoke } = await import('@tauri-apps/api/core');
+function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   return tauriInvoke(cmd, args);
 }
 
@@ -264,7 +265,6 @@ const debouncedAutoSave = debounce(async () => {
   if (!tab?.path || !tab.isModified) return;
   setSaveStatusWithReset('saving');
   try {
-    const { invoke: tauriInvoke } = await import('@tauri-apps/api/core');
     await tauriInvoke('save_file', { path: tab.path, content: tab.source });
     useEditorStore.getState().setIsModified(false);
     setSaveStatusWithReset('saved');
@@ -688,7 +688,6 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
       // Try asset protocol first, fall back to base64 IPC if unavailable
       try {
-        const { convertFileSrc } = await import('@tauri-apps/api/core');
         const displayUrl = convertFileSrc(path);
         set({ imageInsertData: { markdownSrc, dataUrl: displayUrl } });
       } catch (e) {
@@ -820,15 +819,13 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       const newPath = `${root.replace(/[\\/]+$/, '')}/${safeTarget}.md`;
 
       try {
-        const { ask } = await import('@tauri-apps/plugin-dialog');
         const confirmed = await ask(`Create new note "${safeTarget}.md"?`, {
           title: 'Create Wiki Link Target',
           kind: 'info',
         });
         if (!confirmed) return;
 
-        const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('create_file', { path: newPath });
+        await tauriInvoke('create_file', { path: newPath });
 
         if (state.workspaceRoot) {
           await get().refreshWorkspace();
@@ -907,7 +904,6 @@ export async function ensureImageSaveDir(): Promise<string | null> {
   if (_pendingDirPicker) return _pendingDirPicker;
 
   _pendingDirPicker = (async () => {
-    const { open } = await import('@tauri-apps/plugin-dialog');
     const dir = await open({
       directory: true,
       multiple: false,

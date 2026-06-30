@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react';
 import { useEditorStore, selectSource, selectCurrentFile } from './store';
 import { resolveAbsolutePath } from './utils/image';
+import { invoke } from '@tauri-apps/api/core';
+import { save } from '@tauri-apps/plugin-dialog';
 
 /**
  * Get Mermaid theme configuration matching the app theme (copied from MermaidNodeView)
@@ -113,7 +115,6 @@ function mimeFromExt(path: string): string {
  * Uses `replaceAll` so duplicate image references in the same document are all embedded.
  */
 async function embedImagesInSource(source: string, currentDir: string): Promise<string> {
-  const { invoke } = await import('@tauri-apps/api/core');
 
   // Resolve a local path to an absolute filesystem path; returns null if it's not a local file.
   const resolveLocal = (rawPath: string): string | null => {
@@ -271,9 +272,6 @@ export function ExportDialog() {
     setExportMsg('');
 
     try {
-      const { save } = await import('@tauri-apps/plugin-dialog');
-      const { invoke } = await import('@tauri-apps/api/core');
-
       const extMap: Record<string, string> = { html: 'html', pdf: 'pdf', docx: 'docx' };
       const ext = extMap[selectedFormat] || 'html';
       const defaultName = currentFile

@@ -3,6 +3,8 @@ import { useEditorStore, ViewMode, selectCurrentFile, selectIsModified, selectSo
 import { useMarkdownTheme } from './theme/MarkdownThemeProvider';
 import { Grid3x3 } from 'lucide-react';
 import { TableGridPicker } from './TableGridPicker';
+import { invoke } from '@tauri-apps/api/core';
+import { open, save } from '@tauri-apps/plugin-dialog';
 
 const viewModes: { label: string; value: ViewMode; icon: string }[] = [
   { label: '编辑', value: 'wysiwyg', icon: '✏️' },
@@ -44,7 +46,6 @@ export function Toolbar() {
 
   const handleOpenFile = async () => {
     try {
-      const { open } = await import('@tauri-apps/plugin-dialog');
       const selected = await open({
         filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }],
         multiple: false,
@@ -60,12 +61,10 @@ export function Toolbar() {
       await saveFile();
     } else {
       try {
-        const { save } = await import('@tauri-apps/plugin-dialog');
         const path = await save({
           filters: [{ name: 'Markdown', extensions: ['md'] }],
         });
         if (path) {
-          const { invoke } = await import('@tauri-apps/api/core');
           await invoke('save_file', { path, content: source });
           const dir = path.replace(/\\/g, '/').replace(/\/[^/]+$/, '');
           const st = useEditorStore.getState();

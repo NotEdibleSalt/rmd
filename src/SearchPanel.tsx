@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useEditorStore } from './store';
+import { invoke } from '@tauri-apps/api/core';
 
 export function SearchPanel() {
   const { searchQuery, setSearchQuery, setSearchOpen, currentDir } = useEditorStore();
@@ -17,7 +18,6 @@ export function SearchPanel() {
     setSearching(true);
     setHasSearched(true);
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
       const dir = currentDir || '.';
       const res = await invoke('search_files', { query, dir });
       setResults(res as any[]);

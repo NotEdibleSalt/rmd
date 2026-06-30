@@ -17,7 +17,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
 import { setEditorInstance, getEditorInstance } from './editor-ref';
-import { useEditorStore, selectSource } from './store';
+import { useEditorStore, selectSource, ensureImageSaveDir } from './store';
 import { resolveAbsolutePath } from './utils/image';
 import { extractPastedCode } from './utils/langDetect';
 import { MermaidNode } from './extensions/MermaidNode';
@@ -37,6 +37,8 @@ import { MathInline } from './extensions/MathInline';
 import { WikiLinkAutocomplete } from './extensions/WikiLinkAutocomplete';
 import { ImageResizeView } from './extensions/ImageResizeView';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
+import { writeFile, mkdir } from '@tauri-apps/plugin-fs';
 
 const lowlight = createLowlight(common);
 
@@ -749,8 +751,6 @@ async function handleImageFileList(files: FileList, currentDir: string, onInsert
 }
 
 async function handleImageFileBlob(file: File, _currentDir: string, onInsert: (p: string) => Promise<void>) {
-  const { ensureImageSaveDir, useEditorStore } = await import('./store');
-
   // 首次弹出目录选择，后续自动复用
   const saveDir = await ensureImageSaveDir();
   if (!saveDir) return;
@@ -760,7 +760,6 @@ async function handleImageFileBlob(file: File, _currentDir: string, onInsert: (p
   const destPath = `${saveDir}/${filename}`;
 
   try {
-    const { writeFile, mkdir } = await import('@tauri-apps/plugin-fs');
     await mkdir(saveDir, { recursive: true }).catch(() => {});
     const buf = new Uint8Array(await file.arrayBuffer());
     await writeFile(destPath, buf);
@@ -777,7 +776,6 @@ async function handleImageFileBlob(file: File, _currentDir: string, onInsert: (p
       });
       // Extract raw base64 (strip "data:image/...;base64," prefix)
       const rawB64 = dataUrl.split(',')[1];
-      const { invoke } = await import('@tauri-apps/api/core');
       const savedPath = await invoke<string>('save_image', {
         base64Data: rawB64,
         saveDir,
