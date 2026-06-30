@@ -71,7 +71,7 @@ export const TableAutoDetection = Extension.create({
               tableData.rows,
             );
             const { from, to } = view.state.selection;
-            view.dispatch(view.state.tr.replaceWith(from, to, table));
+            view.dispatch(view.state.tr.replaceWith(from, to, table).setMeta('tableAutoDetected', true));
             return true;
           },
         },
@@ -89,6 +89,10 @@ export const TableAutoDetection = Extension.create({
             const historyMeta = tr.getMeta('history$');
             return historyMeta?.undo || historyMeta?.redo;
           })) return null;
+
+          // Skip if this is a follow-up to our own table conversion
+          // (handleKeyDown or handlePaste already handled it).
+          if (transactions.some(tr => tr.getMeta('tableAutoDetected'))) return null;
 
           const detection = detectTableAtState(newState);
           if (!detection) return null;

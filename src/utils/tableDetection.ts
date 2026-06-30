@@ -207,6 +207,6 @@ export function detectTableFromText(text: string): TableData | null {
 export function insertTableAtPos(editor: Editor, detection: DetectedTable): void {
   const table = buildTableFromData(editor.state.schema, detection.headers, detection.rows);
   editor.view.dispatch(
-    editor.state.tr.replaceWith(detection.from, detection.to, table),
+    editor.state.tr.replaceWith(detection.from, detection.to, table).setMeta('tableAutoDetected', true),
   );
 }

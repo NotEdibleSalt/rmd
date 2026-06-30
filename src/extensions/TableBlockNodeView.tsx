@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { NodeViewContent, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
+import { NodeViewContent, NodeViewWrapper, type NodeViewProps, type Editor } from '@tiptap/react';
 import { TextSelection } from '@tiptap/pm/state';
+import { getEditorInstance } from '../editor-ref';
+
+// ponytail: handle \| in cell content without full GFM parser
+const PIPE_ESC = '\0PIPE\0';
+function splitCells(row: string): string[] {
+  const prepped = row.replace(/\\\|/g, PIPE_ESC);
+  return prepped.split('|').slice(1, -1).map(s => s.trim().replace(/\0PIPE\0/g, '|'));
+}
+function escapeCells(text: string): string {
+  return text.replace(/\|/g, '\\|');
+}
 
 export function TableBlockNodeView({ node, view, getPos, updateAttributes }: NodeViewProps) {
   const [sourceMd, setSourceMd] = useState('');
@@ -32,10 +43,10 @@ export function TableBlockNodeView({ node, view, getPos, updateAttributes }: Nod
     if (allRows.length === 0) return '';
 
     const mdLines: string[] = [];
-    mdLines.push('| ' + allRows[0].join(' | ') + ' |');
+    mdLines.push('| ' + allRows[0].map(escapeCells).join(' | ') + ' |');
     mdLines.push('| ' + allRows[0].map(() => '---').join(' | ') + ' |');
     for (let i = 1; i < allRows.length; i++) {
-      mdLines.push('| ' + allRows[i].join(' | ') + ' |');
+      mdLines.push('| ' + allRows[i].map(escapeCells).join(' | ') + ' |');
     }
     return mdLines.join('\n');
   }, [node]);
@@ -78,14 +89,12 @@ export function TableBlockNodeView({ node, view, getPos, updateAttributes }: Nod
 
     // Ensure at least header + separator line
     if (lines.length === 1) {
-      const cellCount = lines[0].split('|').slice(1, -1).length;
+      const cellCount = splitCells(lines[0]).length;
       lines.push('| ' + Array(cellCount).fill('---').join(' | ') + ' |');
     }
 
-    const headerCells = lines[0].split('|').slice(1, -1).map(s => s.trim());
-    const dataRows = lines.slice(2).map(l =>
-      l.split('|').slice(1, -1).map(s => s.trim())
-    );
+    const headerCells = splitCells(lines[0]);
+    const dataRows = lines.slice(2).map(splitCells);
 
     const createCellContent = (text: string) =>
       text
@@ -116,6 +125,14 @@ export function TableBlockNodeView({ node, view, getPos, updateAttributes }: Nod
     // New NodeView created with default isEditingSource: false
   }, [sourceMd, view, node, getPos]);
 
+  // Row/col operations via the TipTap table commands
+  const runTableCommand = useCallback((cmd: (e: Editor) => void) => {
+    const editor = getEditorInstance();
+    if (!editor) return;
+    editor.chain().focus().run();
+    cmd(editor);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -143,12 +160,34 @@ export function TableBlockNodeView({ node, view, getPos, updateAttributes }: Nod
 
   return (
     <NodeViewWrapper className="table-block-wrapper">
-      <button className="table-edit-source-btn" onClick={handleToggleSource} title="编辑源码">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-        </svg>
-      </button>
+      <div className="table-toolbar">
+        <button className="table-toolbar-btn" title="上方插入行" onClick={() => runTableCommand(e => e.chain().focus().addRowBefore().run())}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <button className="table-toolbar-btn" title="下方插入行" onClick={() => runTableCommand(e => e.chain().focus().addRowAfter().run())}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <button className="table-toolbar-btn" title="删除行" onClick={() => runTableCommand(e => e.chain().focus().deleteRow().run())}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+        <div className="table-toolbar-sep" />
+        <button className="table-toolbar-btn" title="左侧插入列" onClick={() => runTableCommand(e => e.chain().focus().addColumnBefore().run())}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <button className="table-toolbar-btn" title="右侧插入列" onClick={() => runTableCommand(e => e.chain().focus().addColumnAfter().run())}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <button className="table-toolbar-btn" title="删除列" onClick={() => runTableCommand(e => e.chain().focus().deleteColumn().run())}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+        <div className="table-toolbar-sep" />
+        <button className="table-toolbar-btn" title="编辑源码" onClick={handleToggleSource}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+        </button>
+      </div>
       <NodeViewContent />
     </NodeViewWrapper>
   );

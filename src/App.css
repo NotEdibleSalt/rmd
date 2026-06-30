@@ -1908,14 +1908,21 @@ body {
   position: relative;
 }
 
-.table-block-wrapper:hover .table-edit-source-btn {
+.table-block-wrapper:hover .table-toolbar-btn {
   opacity: 1;
 }
 
-.table-edit-source-btn {
+/* Table toolbar: row/col operation buttons */
+.table-toolbar {
   position: absolute;
   top: 8px;
   right: 8px;
+  display: flex;
+  gap: 4px;
+  z-index: 5;
+}
+
+.table-toolbar-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1929,13 +1936,19 @@ body {
   transition: opacity 0.15s;
   box-shadow: var(--shadow);
   color: var(--text-secondary);
-  z-index: 5;
 }
 
-.table-edit-source-btn:hover {
+.table-toolbar-btn:hover {
   background: var(--bg-tertiary);
   color: var(--accent);
   transform: scale(1.1);
+}
+
+.table-toolbar-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border-color);
+  align-self: center;
 }
 
 /* Source mode container */
@@ -1991,6 +2004,11 @@ body {
   padding: 8px 12px;
   text-align: center;
   min-width: 60px;
+  border: 1px solid var(--table-border);
+}
+
+.wysiwyg-editor .ProseMirror th {
+  border-bottom-width: 2px;
 }
 
 .wysiwyg-editor .ProseMirror img {
@@ -2742,7 +2760,7 @@ body {
 
 .table-grid-label {
   font-size: 12px;
-  color: #000;
+  color: var(--text-primary);
   align-self: flex-start;
   margin-bottom: 2px;
 }
@@ -2782,7 +2800,7 @@ body {
 .table-grid-size {
   font-size: 13px;
   font-weight: 600;
-  color: #000;
+  color: var(--text-primary);
   margin-top: 4px;
 }
 
