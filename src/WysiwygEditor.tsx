@@ -231,7 +231,7 @@ export function WysiwygEditor() {
         state: {
           init() { return DecorationSet.empty; },
           apply(tr, old) {
-            if (!tr.docChanged) return old;
+            if (!tr.docChanged && !tr.getMeta('search')) return old;
             const { query, caseSensitive } = searchRef.current;
             if (!query) return DecorationSet.empty;
             const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -462,7 +462,7 @@ export function WysiwygEditor() {
     searchRef.current = { query: findReplaceOpen ? findQuery : '', caseSensitive: findCaseSensitive };
     if (editor) {
       // Force the search plugin to re-evaluate decorations
-      editor.view.dispatch(editor.state.tr);
+      editor.view.dispatch(editor.state.tr.setMeta('search', true));
     }
   }, [findQuery, findReplaceOpen, findCaseSensitive, editor]);
 
