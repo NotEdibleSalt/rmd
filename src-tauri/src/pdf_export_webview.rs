@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -93,8 +93,8 @@ async fn export_pdf_webview_impl(
 
 fn write_html_with_images(
     html: &str,
-    html_path: &PathBuf,
-    temp_dir: &PathBuf,
+    html_path: &Path,
+    temp_dir: &Path,
     large_images: &[String],
 ) -> Result<(), String> {
     if large_images.is_empty() {

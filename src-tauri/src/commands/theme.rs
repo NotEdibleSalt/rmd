@@ -82,7 +82,7 @@ pub fn upload_external_theme(zip_path: String) -> Result<Vec<ThemeEntry>, String
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
         // Sanitize: strip any leading separators to prevent path traversal
-        let entry_name = entry.name().trim_start_matches(|c: char| c == '/' || c == '\\');
+        let entry_name = entry.name().trim_start_matches(['/', '\\']);
         let out_path = extract_dir.join(entry_name);
 
         if entry.is_dir() {

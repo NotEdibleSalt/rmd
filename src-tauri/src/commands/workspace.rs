@@ -49,7 +49,7 @@ pub struct GraphData {
 
 /// Strip ./ prefix and .md/.markdown extension from a wikilink target.
 fn normalize_wikilink_target(raw: &str) -> String {
-    let trimmed = raw.trim().trim_start_matches(|c| c == '.' || c == '/' || c == '\\');
+    let trimmed = raw.trim().trim_start_matches(['.', '/', '\\']);
     if let Some(stripped) = trimmed
         .strip_suffix(".md")
         .or_else(|| trimmed.strip_suffix(".markdown"))
@@ -84,7 +84,7 @@ fn scan_workspace_files(root: &str) -> Result<Vec<WorkspaceFile>, String> {
         let relative = full_path
             .strip_prefix(root)
             .unwrap_or(&full_path)
-            .trim_start_matches(|c| c == '/' || c == '\\')
+            .trim_start_matches(['/', '\\'])
             .to_string();
         let name = strip_extension(&relative);
         let modified = entry.metadata().ok()

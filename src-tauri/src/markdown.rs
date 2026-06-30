@@ -101,10 +101,10 @@ pub fn parse(source: &str) -> MarkdownOutput {
 fn inject_heading_ids(html: &str) -> String {
     // Process each heading level separately since regex doesn't support backreferences
     let mut result = html.to_string();
+    let inner_re = Regex::new(r"<[^>]+>").unwrap();
     for level in 1..=6 {
         let pattern = format!(r#"(?i)<h{level}([^>]*)>(.*?)</h{level}>"#);
         let re = Regex::new(&pattern).unwrap();
-        let inner_re = Regex::new(r"<[^>]+>").unwrap();
         result = re
             .replace_all(&result, |caps: &regex::Captures| {
                 let attrs = &caps[1];

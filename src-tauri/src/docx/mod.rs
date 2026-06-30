@@ -171,7 +171,7 @@ impl DocxWriter {
         let node_value = &node.data.borrow().value;
         match node_value {
             NodeValue::Heading(heading) => {
-                let level = heading.level.min(6).max(1);
+                let level = heading.level.clamp(1, 6);
                 let idx = (level - 1) as usize;
 
                 // Update heading counters
@@ -756,51 +756,48 @@ impl DocxWriter {
 
         // Rows
         for child in node.children() {
-            match &child.data.borrow().value {
-                NodeValue::TableRow(_) => {
+            if let NodeValue::TableRow(_) = &child.data.borrow().value {
+                self.document
+                    .write_event(Event::Start(BytesStart::new("w:tr")))
+                    .unwrap();
+                for cell in child.children() {
                     self.document
-                        .write_event(Event::Start(BytesStart::new("w:tr")))
+                        .write_event(Event::Start(BytesStart::new("w:tc")))
                         .unwrap();
-                    for cell in child.children() {
-                        self.document
-                            .write_event(Event::Start(BytesStart::new("w:tc")))
-                            .unwrap();
-                        // Cell width matching column width
-                        let mut tcw = BytesStart::new("w:tcW");
-                        tcw.push_attribute(("w:w", col_width_str.as_str()));
-                        tcw.push_attribute(("w:type", "dxa"));
-                        self.document.write_event(Event::Empty(tcw)).unwrap();
+                    // Cell width matching column width
+                    let mut tcw = BytesStart::new("w:tcW");
+                    tcw.push_attribute(("w:w", col_width_str.as_str()));
+                    tcw.push_attribute(("w:type", "dxa"));
+                    self.document.write_event(Event::Empty(tcw)).unwrap();
 
-                        self.document
-                            .write_event(Event::Start(BytesStart::new("w:p")))
-                            .unwrap();
-                        // Center cell content horizontally
-                        self.document
-                            .write_event(Event::Start(BytesStart::new("w:pPr")))
-                            .unwrap();
-                        let mut cell_jc = BytesStart::new("w:jc");
-                        cell_jc.push_attribute(("w:val", "center"));
-                        self.document
-                            .write_event(Event::Empty(cell_jc))
-                            .unwrap();
-                        self.document
-                            .write_event(Event::End(BytesEnd::new("w:pPr")))
-                            .unwrap();
-                        for cell_child in cell.children() {
-                            self.walk_ast(cell_child, base_path);
-                        }
-                        self.document
-                            .write_event(Event::End(BytesEnd::new("w:p")))
-                            .unwrap();
-                        self.document
-                            .write_event(Event::End(BytesEnd::new("w:tc")))
-                            .unwrap();
+                    self.document
+                        .write_event(Event::Start(BytesStart::new("w:p")))
+                        .unwrap();
+                    // Center cell content horizontally
+                    self.document
+                        .write_event(Event::Start(BytesStart::new("w:pPr")))
+                        .unwrap();
+                    let mut cell_jc = BytesStart::new("w:jc");
+                    cell_jc.push_attribute(("w:val", "center"));
+                    self.document
+                        .write_event(Event::Empty(cell_jc))
+                        .unwrap();
+                    self.document
+                        .write_event(Event::End(BytesEnd::new("w:pPr")))
+                        .unwrap();
+                    for cell_child in cell.children() {
+                        self.walk_ast(cell_child, base_path);
                     }
                     self.document
-                        .write_event(Event::End(BytesEnd::new("w:tr")))
+                        .write_event(Event::End(BytesEnd::new("w:p")))
+                        .unwrap();
+                    self.document
+                        .write_event(Event::End(BytesEnd::new("w:tc")))
                         .unwrap();
                 }
-                _ => {}
+                self.document
+                    .write_event(Event::End(BytesEnd::new("w:tr")))
+                    .unwrap();
             }
         }
 

@@ -52,7 +52,7 @@ fn try_embed_file(raw_path: &str, base_path: &str) -> Option<String> {
 /// Strip ./ prefix and .md/.markdown extension from a wikilink target
 /// so [[./bb.md]] resolves to the same file as [[bb]].
 pub(crate) fn normalize_wikilink_target(raw: &str) -> String {
-    let trimmed = raw.trim().trim_start_matches(|c| c == '.' || c == '/' || c == '\\');
+    let trimmed = raw.trim().trim_start_matches(['.', '/', '\\']);
     if let Some(stripped) = trimmed
         .strip_suffix(".md")
         .or_else(|| trimmed.strip_suffix(".markdown"))
