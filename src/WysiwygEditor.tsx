@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useEditor, EditorContent, mergeAttributes, ReactNodeViewRenderer, type Editor } from '@tiptap/react';
+import { useEditor, EditorContent, mergeAttributes, ReactNodeViewRenderer } from '@tiptap/react';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { BubbleMenu } from '@tiptap/react/menus';
@@ -18,7 +18,6 @@ import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
 import { setEditorInstance, getEditorInstance } from './editor-ref';
 import { useEditorStore, selectSource, ensureImageSaveDir } from './store';
-import { resolveAbsolutePath } from './utils/image';
 import { extractPastedCode } from './utils/langDetect';
 import { MermaidNode } from './extensions/MermaidNode';
 import { TableAutoDetection } from './extensions/tableAutoDetectionPlugin';
@@ -36,16 +35,14 @@ import { MathBlock } from './extensions/MathBlock';
 import { MathInline } from './extensions/MathInline';
 import { WikiLinkAutocomplete } from './extensions/WikiLinkAutocomplete';
 import { ImageResizeView } from './extensions/ImageResizeView';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { invoke } from '@tauri-apps/api/core';
 import { writeFile, mkdir } from '@tauri-apps/plugin-fs';
 
 const lowlight = createLowlight(common);
 
 /* ─────────────── Custom Image extension ───────────────
- * Stores the portable markdown path in `data-markdown-src`
- * and the display-ready asset URL in `src` (via Tauri convertFileSrc).
- * Markdown serialization always uses `data-markdown-src`.
+ * Holds the portable markdown path in `src`.
+ * The NodeView resolves it to a Tauri asset URL at render time.
  */
 const LocalImage = Image.extend({
   addAttributes() {
@@ -53,14 +50,8 @@ const LocalImage = Image.extend({
       src: { default: null },
       alt: { default: null },
       title: { default: null },
-      'data-markdown-src': { default: null },
       width: { default: null },
     };
-  },
-  renderHTML({ HTMLAttributes }) {
-    // Strip internal attribute from rendered HTML
-    const { 'data-markdown-src': _mdSrc, ...attrs } = HTMLAttributes;
-    return ['img', attrs];
   },
   parseHTML() {
     return [
@@ -71,7 +62,6 @@ const LocalImage = Image.extend({
           const img = el as HTMLImageElement;
           return {
             src: img.getAttribute('src'),
-            'data-markdown-src': img.getAttribute('data-markdown-src'),
             width: img.getAttribute('width'),
           };
         },
@@ -82,40 +72,6 @@ const LocalImage = Image.extend({
     return ReactNodeViewRenderer(ImageResizeView);
   },
 });
-
-/* ─────────────── Resolve local image paths to Tauri asset URLs ─────────────── */
-
-/** Scan editor for image nodes whose src is a relative file path and resolve to Tauri asset URLs */
-function resolveImageNodesInEditor(editor: Editor) {
-  const currentDir = useEditorStore.getState().currentDir;
-  const images: { pos: number; attrs: Record<string, unknown> }[] = [];
-
-  editor.state.doc.descendants((node, pos) => {
-    if (node.type.name === 'image') {
-      const src = node.attrs.src as string;
-      if (src && !src.startsWith('data:') && !src.startsWith('http://') && !src.startsWith('https://')) {
-        images.push({ pos, attrs: { ...node.attrs } });
-      }
-    }
-  });
-
-  for (const { pos, attrs } of images) {
-    try {
-      const absPath = resolveAbsolutePath(attrs.src as string, currentDir);
-      if (absPath === attrs.src) continue;
-      const assetUrl = convertFileSrc(absPath);
-      editor.view.dispatch(
-        editor.state.tr.setNodeMarkup(pos, undefined, {
-          ...attrs,
-          src: assetUrl,
-          'data-markdown-src': attrs.src,
-        })
-      );
-    } catch (e) {
-      console.error('Failed to resolve image node:', (attrs.src as string) || '(empty)', e);
-    }
-  }
-}
 
 /* ─────────────── Component ─────────────── */
 
@@ -167,7 +123,7 @@ export function WysiwygEditor() {
         markdownSerializer: {
           nodes: {
             image: (state: any, node: any) => {
-              const src = node.attrs['data-markdown-src'] || node.attrs.src;
+              const src = node.attrs.src;
               const alt = node.attrs.alt || '';
               const width = node.attrs.width;
               if (width) {
@@ -474,13 +430,6 @@ export function WysiwygEditor() {
     }
   }, [findQuery, findReplaceOpen, findCaseSensitive, editor]);
 
-  // Resolve existing image references after editor mounts
-  useEffect(() => {
-    if (!editor) return;
-    const timer = setTimeout(() => resolveImageNodesInEditor(editor), 100);
-    return () => clearTimeout(timer);
-  }, [editor]);
-
   // External sync: when store.source changes, update editor
   useEffect(() => {
     if (!editor) return;
@@ -490,8 +439,6 @@ export function WysiwygEditor() {
       setTimeout(() => {
         isExternalUpdate.current = true;
         editor.commands.setContent(source, { contentType: 'markdown', emitUpdate: false } as any);
-        // Resolve images in the newly loaded content
-        setTimeout(() => resolveImageNodesInEditor(editor), 50);
         requestAnimationFrame(() => {
           isExternalUpdate.current = false;
         });
@@ -518,13 +465,12 @@ export function WysiwygEditor() {
   // Handle image insertion from store
   useEffect(() => {
     if (!editor || !imageInsertData) return;
-    const { markdownSrc, dataUrl } = imageInsertData;
+    const { markdownSrc } = imageInsertData;
     clearImageInsert();
     // Defer editor dispatch out of React's commit phase
     setTimeout(() => {
       editor.chain().focus()
-        .setImage({ src: dataUrl })
-        .updateAttributes('image', { 'data-markdown-src': markdownSrc })
+        .setImage({ src: markdownSrc })
         .run();
     }, 0);
   }, [imageInsertData, editor, clearImageInsert]);

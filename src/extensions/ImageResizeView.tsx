@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { useEditorStore } from '../store';
+import { resolveAbsolutePath } from '../utils/image';
 
 export function ImageResizeView({ node, updateAttributes, selected }: NodeViewProps) {
   const imgRef = useRef<HTMLImageElement>(null);
@@ -7,9 +10,24 @@ export function ImageResizeView({ node, updateAttributes, selected }: NodeViewPr
   const [isResizing, setIsResizing] = useState(false);
   const [editingAlt, setEditingAlt] = useState(false);
   const [altDraft, setAltDraft] = useState('');
+  const currentDir = useEditorStore((s) => s.currentDir);
 
   const width = node.attrs.width as string | null;
   const altText = (node.attrs.alt as string) || '';
+  // Resolve relative paths to Tauri asset URLs at render time only
+  const displaySrc = useMemo(() => {
+    const src = node.attrs.src as string;
+    if (!src || src.startsWith('data:') || src.startsWith('http://') || src.startsWith('https://')) return src;
+    // Already absolute path → convert directly
+    if (/^[A-Za-z]:[/\\]/.test(src) || src.startsWith('/') || src.startsWith('\\')) {
+      try { return convertFileSrc(src); } catch { return src; }
+    }
+    // Relative path → resolve against currentDir then convert
+    if (!currentDir) return src;
+    const absPath = resolveAbsolutePath(src, currentDir);
+    if (absPath === src) return src;
+    try { return convertFileSrc(absPath); } catch { return absPath; }
+  }, [node.attrs.src, currentDir]);
 
   // Auto-focus alt input when it appears
   useEffect(() => {
@@ -86,7 +104,7 @@ export function ImageResizeView({ node, updateAttributes, selected }: NodeViewPr
     >
       <img
         ref={imgRef}
-        src={node.attrs.src as string}
+        src={displaySrc}
         alt={altText}
         title={(node.attrs.title as string) || ''}
         style={{

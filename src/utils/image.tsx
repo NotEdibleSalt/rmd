@@ -25,21 +25,7 @@ function normalizeSingleImagePath(rawPath: string, normDir: string): string | nu
   // Skip data URIs and remote URLs
   if (rawPath.startsWith('data:') || rawPath.startsWith('https://')) return null;
 
-  let filePath: string;
-
-  // Tauri asset protocol: http://asset.localhost/<URL-encoded path>
-  if (rawPath.startsWith('http://asset.localhost/')) {
-    try {
-      filePath = decodeURIComponent(rawPath.slice('http://asset.localhost/'.length));
-    } catch {
-      return null;
-    }
-  } else {
-    filePath = rawPath;
-  }
-
-  // Normalize separators
-  filePath = filePath.replace(/\\/g, '/');
+  let filePath = rawPath.replace(/\\/g, '/');
 
   // Check if it's an absolute path (Windows drive letter or Unix root)
   const isAbsolute = /^[A-Za-z]:[/\\]/.test(filePath) || filePath.startsWith('/');
@@ -59,7 +45,6 @@ function normalizeSingleImagePath(rawPath: string, normDir: string): string | nu
  *
  * Handles:
  * - `![](C:\absolute\path\to\img.png)` → `![](relative/path/img.png)`
- * - `![](http://asset.localhost/C%3A%5C...%5Cimg.png)` → `![](relative/path/img.png)`
  * - Leaves data:/https: URLs and already-relative paths unchanged
  */
 export function normalizeImagePaths(source: string, currentDir: string): string {

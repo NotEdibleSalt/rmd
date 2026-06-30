@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { debounce } from './utils/debounce';
 import { normalizeImagePaths } from './utils/image';
 import { WorkspaceIndex, WorkspaceFile, BacklinkEntry, GraphData } from './lib/workspaceIndex';
-import { invoke as tauriInvoke, convertFileSrc } from '@tauri-apps/api/core';
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { ask, open } from '@tauri-apps/plugin-dialog';
 
 export interface TocItem {
@@ -144,7 +144,7 @@ interface EditorStore {
   externalThemeEntries: { id: string; name: string; path: string }[];
 
   // Image insertion
-  imageInsertData: { markdownSrc: string; dataUrl: string } | null;
+  imageInsertData: { markdownSrc: string } | null;
   /** Per-document image save directory — chosen on first image insertion */
   imageSaveDir: string;
 
@@ -672,7 +672,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
       // If it's already a data URL, just pass through
       if (path.startsWith('data:')) {
-        set({ imageInsertData: { markdownSrc: path, dataUrl: path } });
+        set({ imageInsertData: { markdownSrc: path } });
         return;
       }
 
@@ -686,20 +686,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         }
       }
 
-      // Try asset protocol first, fall back to base64 IPC if unavailable
-      try {
-        const displayUrl = convertFileSrc(path);
-        set({ imageInsertData: { markdownSrc, dataUrl: displayUrl } });
-      } catch (e) {
-        console.warn('convertFileSrc failed, falling back to read_image_base64:', e);
-        try {
-          const dataUrl = await invoke<string>('read_image_base64', { path });
-          set({ imageInsertData: { markdownSrc, dataUrl } });
-        } catch (e2) {
-          console.error('All image load methods failed:', e2);
-          set({ imageInsertData: { markdownSrc, dataUrl: path } });
-        }
-      }
+      set({ imageInsertData: { markdownSrc } });
     },
 
     clearImageInsert: () => {
